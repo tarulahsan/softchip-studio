@@ -1,0 +1,43 @@
+// SoftChip Studio - Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  avatar    String?
+  plan      String    @default("free") // free, starter, pro, enterprise
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  projects  Project[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  circuit     String?  // JSON stringified circuit data
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CircuitTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  category    String
+  circuit     String   // JSON stringified circuit data
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://dev.blues.io/blog/blues-university-understanding-sensor-interfaces-uart-i2c-spi-can",
+    "name": "Understanding Sensor Interfaces - UART, I2C, SPI and CAN - Blues Developers",
+    "snippet": "In this guide you'll start with the fundamental UART methodology, followed by the versatile I2C protocol, higher-speed SPI, and end with the rugged automotive- ...",
+    "host_name": "dev.blues.io",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://community.element14.com/learn/learning-center/the-tech-connection/w/documents/4664/an-introduction-to-the-uart-spi-and-i2c-communications-protocols",
+    "name": "An Introduction to the UART, SPI, and I2C Communications Protocols",
+    "snippet": "The aim of this article is to make the reader familiar with the concepts of UART, SPI, and I2C and their usefulness.",
+    "host_name": "community.element14.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.elprocus.com/communication-protocols",
+    "name": "Communication Protocols : Basics and Types with Functionality - ElProCus",
+    "snippet": "This Article Discusses an Overview of Communication Protocols and Types like Inter and Intra like USB, USART, I2C, SPI, CAN, etc.",
+    "host_name": "www.elprocus.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.linkedin.com/posts/anis-hassen_uart-and-i2c-spi-in-embedded-systems-activity-7430898180294221824-jcVv",
+    "name": "UART I2C SPI Communication Protocols for Embedded Systems | Anis HASSEN posted on the topic | LinkedIn",
+    "snippet": "UART AND I2C SPI ✅️ In embedded systems, communication protocols enable microcontrollers to exchange data with sensors, memory chips, ...",
+    "host_name": "www.linkedin.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://resources.altium.com/p/i2c-vs-spi-vs-uart-how-layout-these-common-buses",
+    "name": "UART vs. SPI vs. I2C: Routing & Layout Guidelines | Blogs - Altium Resources",
+    "snippet": "These three serial protocols are bus protocols; I2C and UART use addressing schemes, while SPI is addressless. Although SPI is addressless, it is a bus ...",
+    "host_name": "resources.altium.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.researchgate.net/publication/356556000_A_Review_on_The_Inter-Processor_Communication_I2C_UART_and_SPI_interfacing_techniques",
+    "name": "A Review on The Inter-Processor Communication: I2C, UART, and SPI interfacing techniques - ResearchGate",
+    "snippet": "This review article attempts to provide a detailed comparison between I2C, UART and SPI interfacing techniques which is an enhancement of the application of ...",
+    "host_name": "www.researchgate.net",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://ww1.microchip.com/downloads/en/DeviceDoc/40002192A.pdf",
+    "name": "[PDF] Communications Tips and Tricks - Microchip Technology",
+    "snippet": "The UART module with protocol support has hardware built-in that handles the serial communication required by the LIN protocol and can be implemented using ...",
+    "host_name": "ww1.microchip.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/822749124/EMBEDDED-COMMUNICATION-PROTOCOLS",
+    "name": "SPI, I2C, UART Protocol Comparison | PDF | Error Detection And Correction - Scribd",
+    "snippet": "This document provides a comprehensive comparative analysis of three communication protocols used in embedded systems: SPI, I2C, and UART.",
+    "host_name": "www.scribd.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://assets.danfoss.com/documents/latest/188000/BE383956396151en-000101.pdf",
+    "name": "[PDF] Communication protocols for wired digital sensor interfaces - Danfoss",
+    "snippet": "Modbus RTU has excellent scalability as it can handle up to 247 nodes. Widely used in building management and industrial automation systems, the. Modbus ...",
+    "host_name": "assets.danfoss.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.seeedstudio.com/blog/2019/09/25/uart-vs-i2c-vs-spi-communication-protocols-and-uses/?srsltid=AfmBOopIXUUKEdiu4zAlQoPu6gI9HgvZPyJx4ctOPL4iLUsk1uEsr2lv",
+    "name": "UART vs I2C vs SPI – Communication Protocols and Uses - Latest News from Seeed Studio",
+    "snippet": "This article will compare the various interfaces: UART, SPI and I2C and their differences. We will be comparing them with various factors through their ... Missing: automation | Show results with: automation",
+    "host_name": "www.seeedstudio.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

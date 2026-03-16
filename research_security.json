@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.fortinet.com/resources/cyberglossary/hardware-security-module",
+    "name": "What Is Hardware Security Module (HSM)?",
+    "snippet": "A hardware security module ( HSM ) is a hardware unit that stores cryptographic keys to keep them private while ensuring they are available to those authorized ... Read more\nA hardware security module (HSM) stores cryptographic keys, keeping them private yet accessible to authorized users. Learn about HSM model types and their ...",
+    "host_name": "www.fortinet.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.entrust.com/resources/learn/what-are-hardware-security-modules",
+    "name": "What is a Hardware Security Module (HSM) & its Services?",
+    "snippet": "HSMs are hardened, tamper-resistant hardware devices that secure cryptographic processes by generating, protecting, and managing keys. Read more",
+    "host_name": "www.entrust.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://cpl.thalesgroup.com/encryption/hardware-security-modules",
+    "name": "Hardware Security Modules (HSMs)",
+    "snippet": "A hardware security module (HSM) is a dedicated crypto processor that is specifically designed for the protection of the crypto key lifecycle. Read more",
+    "host_name": "cpl.thalesgroup.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Hardware_security_module",
+    "name": "Hardware security module",
+    "snippet": "A hardware security module (HSM) is a physical computing device that safeguards and manages secrets (most importantly digital keys), and performs encryption ... Read more",
+    "host_name": "en.wikipedia.org",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.yubico.com/products/hardware-security-module",
+    "name": "Hardware Security Module (HSM) For Modern Systems",
+    "snippet": "A comprehensive cryptographic open source toolbox with support for PKCS#11. Simplified deployment for organizations of all sizes. Ultra portable ... Read more",
+    "host_name": "www.yubico.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.keyfactor.com/blog/hardware-security-modules-an-essential-element-in-your-cryptographic-strategy",
+    "name": "Hardware Security Modules – An Essential Element in",
+    "snippet": "23 Jul 2024 — Hardware Security Modules (HSMs) are tamper-resistant, physical devices designed to perform cryptographic operations . They are used to generate, ... Read more",
+    "host_name": "www.keyfactor.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.openedr.com/blog/hardware-security-module",
+    "name": "Hardware Security Module | Types and Key Features",
+    "snippet": "3 Nov 2025 — A Hardware Security Module securely generates, stores, and manages cryptographic keys used for encryption, digital signing, and authentication. Read more",
+    "host_name": "www.openedr.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://medium.com/m2p-yap-fintech/cryptographic-keys-and-hardware-security-modules-an-introduction-8c692e567286",
+    "name": "Cryptographic Keys and Hardware Security Modules",
+    "snippet": "Hardware Security Module (HSM ) is a device that provides a wired security solution for the wireless world. It is a dedicated cryptographic ... Read more",
+    "host_name": "medium.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.fortanix.com/faq/hardware-security-module/hsm",
+    "name": "HSM",
+    "snippet": "A Hardware Security Module (HSM) offers a highly secure, tamper-resistant environment to store sensitive data and perform cryptographic operations.",
+    "host_name": "www.fortanix.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.nxp.com/design/design-center/software/development-software/mcuxpresso-software-and-tools-/device-hsm-trust-provisioning:DEVICEHSM-TRUST-PROVISIONING",
+    "name": "Device HSM Trust Provisioning",
+    "snippet": "With the Device HSM Trust Provisioning solution, OEM software IP and other assets are securely transferred from OEM site to a target NXP genuine device.",
+    "host_name": "www.nxp.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]
