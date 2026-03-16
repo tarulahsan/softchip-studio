@@ -1,0 +1,108 @@
+# SoftChip Studio License Agreement
+
+**Version 1.0 - Effective Date: January 2025**
+
+---
+
+## 1. Definitions
+
+- **"Software"** refers to SoftChip Studio, including all source code, documentation, assets, and related materials.
+- **"Licensor"** refers to the copyright holder(s) of SoftChip Studio.
+- **"Licensee"** refers to any individual or entity obtaining a copy of the Software.
+- **"Personal Use"** means use by an individual for non-commercial, educational, or hobby purposes.
+- **"Commercial Use"** means any use of the Software intended for or directed toward commercial advantage or monetary compensation.
+
+---
+
+## 2. Personal Use License
+
+Subject to the terms of this License, the Licensor hereby grants you a **non-exclusive, worldwide, royalty-free license** to use, copy, modify, and distribute the Software for **Personal Use** only, provided that you meet the following conditions:
+
+### Permitted Activities (Personal Use):
+- ✅ Use the Software for personal learning and education
+- ✅ Use the Software for academic or research purposes
+- ✅ Use the Software for personal projects and hobbies
+- ✅ Modify the Software for personal use
+- ✅ Share the Software with others for non-commercial purposes
+- ✅ Create derivative works for non-commercial purposes
+
+### Conditions:
+1. You must retain all copyright notices, this license, and any other proprietary notices in all copies of the Software.
+2. You must give appropriate credit to the original authors and provide a link to this license.
+3. You may not remove or alter any license notices in the Software.
+
+---
+
+## 3. Commercial Use Restriction
+
+**Commercial use of this Software requires explicit written permission from the Licensor.**
+
+### Activities Requiring Commercial License:
+- ❌ Using the Software in a commercial product or service
+- ❌ Integrating the Software into a paid SaaS platform
+- ❌ Using the Software to provide paid services to clients
+- ❌ Using the Software within a for-profit organization for business operations
+- ❌ Reselling or redistributing the Software as part of a commercial product
+- ❌ Using the Software for internal business processes in a for-profit company
+
+### Obtaining a Commercial License:
+To obtain a commercial license, please contact the Licensor at:
+- **GitHub**: [https://github.com/tarulahsan/softchip-studio](https://github.com/tarulahsan/softchip-studio)
+
+Commercial licensing terms, including fees and conditions, will be determined on a case-by-case basis.
+
+---
+
+## 4. Open Source Contribution
+
+Contributions to this project are welcome and appreciated. By contributing to the Software, you agree that:
+
+1. Your contributions will be licensed under the same terms as this License.
+2. You grant the Licensor a perpetual, worldwide, non-exclusive license to use, modify, and distribute your contributions.
+3. You represent that you have the right to grant these licenses.
+
+---
+
+## 5. Trademark
+
+"SoftChip Studio" and associated logos are trademarks of the Licensor. You may not use these trademarks without prior written consent, except to attribute the origin of the Software.
+
+---
+
+## 6. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+## 7. Limitation of Liability
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+---
+
+## 8. Termination
+
+This License and the rights granted hereunder will terminate automatically upon any breach by you of the terms of this License. Upon termination, you must destroy all copies of the Software in your possession.
+
+---
+
+## 9. Miscellaneous
+
+1. This License represents the complete agreement concerning the subject matter hereof.
+2. If any provision of this License is held to be unenforceable, such provision shall be reformed only to the extent necessary to make it enforceable.
+3. This License shall be governed by the laws of the jurisdiction in which the Licensor resides.
+
+---
+
+## 10. Contact Information
+
+For questions about this License or to obtain a commercial license:
+
+- **Project**: SoftChip Studio
+- **GitHub**: [https://github.com/tarulahsan/softchip-studio](https://github.com/tarulahsan/softchip-studio)
+- **Author**: Tarul Ahsan
+
+---
+
+**By using, copying, modifying, or distributing the Software, you indicate your acceptance of this License and agree to be bound by its terms and conditions.**

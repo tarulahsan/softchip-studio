@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Visual drag-and-drop platform for building data processing systems with algorithmic soft microchips",
   "author": "SoftChip Studio Team",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",

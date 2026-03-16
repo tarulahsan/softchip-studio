@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![SoftChip Studio](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge) ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.0-38bdf8?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+![SoftChip Studio](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge) ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.0-38bdf8?style=for-the-badge) ![License](https://img.shields.io/badge/License-Personal%20%7C%20Commercial-blue?style=for-the-badge)
 
 **Build Intelligent Data Pipelines Without Code**
 
@@ -264,7 +264,11 @@ git push origin feature/amazing-feature
 
 ## 📄 License
 
-MIT License - feel free to use for personal or commercial projects.
+**Personal Use**: Free to use for personal, educational, and non-commercial purposes.
+
+**Commercial Use**: Requires special permission. Contact the author for commercial licensing.
+
+See [LICENSE](LICENSE) file for full terms.
 
 ---
 
