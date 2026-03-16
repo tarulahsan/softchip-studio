@@ -4,9 +4,9 @@
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge) ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.0-38bdf8?style=for-the-badge) ![License](https://img.shields.io/badge/License-Personal%20%7C%20Commercial-blue?style=for-the-badge)
 
-**Build Intelligent Data Pipelines Without Code**
+**Visual Circuit Builder for AI Pipelines & Data Processing**
 
-**Visual workflow automation meets AI - Like n8n meets hardware design**
+**Design circuits • Build AI workflows • Process data visually - No code required**
 
 [🌐 Live Demo](#) • [📖 Documentation](#-quick-start) • [🤝 Contributing](#contributing) • [📄 License](#license)
 
@@ -16,8 +16,11 @@
 
 ## 🎯 What is SoftChip Studio?
 
-SoftChip Studio is a **visual drag-and-drop platform** for building AI-powered data processing pipelines and workflow automation — all without writing code. Think of it as combining the best of n8n's workflow automation with AI capabilities in a hardware-inspired visual interface.
-Connect chips like circuit components to build powerful data processing pipelines that leverage GPT-4, Claude, Kimi, Qwen, and other AI models.
+SoftChip Studio is a **visual circuit builder** and **node-based editor** for designing AI-powered data pipelines. Drag-and-drop soft microchips onto a canvas, connect them like electronic circuits, and build powerful data processing workflows — all without writing code. 
+
+Think of it as **combining circuit design with AI pipelines**: like hardware schematic design meets n8n workflow automation. Each chip has input/output pins that you connect to route data through your AI pipeline, making complex data transformations visual and intuitive.
+
+Build AI workflows with **GPT-4, Claude, Kimi, Qwen** and process **audio, text, images, and signals** with our 60+ ready-to-use chips.
 
 ---
 
@@ -34,7 +37,7 @@ SoftChip Studio supports **all major AI providers** with a bring-your-own-key mo
 | **Qwen** | Qwen-Turbo, Qwen-Plus, Qwen-Max | Chat, Analysis, Multilingual |
 | **Custom APIs** | Any OpenAI-compatible | Full flexibility for custom endpoints |
 
-### 🧩 60+ Functional Chips
+### 🧩 60+ Functional Chips (Circuit Components)
 
 | Category | Count | Key Chips |
 |----------|-------|-----------|
@@ -125,19 +128,21 @@ bun run start
 4. Keys are stored locally in your browser (never sent to servers)
 5. Start building AI-powered workflows!
 
-### Building Your First AI Pipeline
-1. **Add Input Chip** → Drag a "Text Input" chip onto the canvas
-2. **Add AI Chip** → Drag an "AI Chat" chip and connect the text output to it
-3. **Configure** → Select your provider and model in chip settings
-4. **Add Output** → Connect AI response to "Value Display"
-5. **Run** → Click the Run button to execute your pipeline
+### Building Your First AI Pipeline Circuit
+1. **Add Input Chip** → Drag a "Text Input" chip onto the circuit canvas
+2. **Add AI Chip** → Drag an "AI Chat" chip and connect its input pin to the text output pin
+3. **Configure** → Select your AI provider and model in chip settings
+4. **Add Output** → Connect AI response output to a "Value Display" chip
+5. **Run** → Click the Run button to execute your circuit pipeline
 
-### Understanding Chips
-Each chip has:
-- **Input Pins** (left side) - Where data enters
-- **Output Pins** (right side) - Where data exits
-- **Parameters** - Configuration options
-- **Execute Function** - The processing logic
+### Understanding Circuit Chips
+Each chip is like an integrated circuit component with:
+- **Input Pins** (left side) - Where data enters the chip
+- **Output Pins** (right side) - Where processed data exits
+- **Parameters** - Configuration options for the chip
+- **Execute Function** - The internal processing logic
+
+Connect chips by drawing wires from output pins to input pins, just like designing electronic circuits!
 
 ### Connecting Chips
 1. Click on an **output pin** (right side of chip)
