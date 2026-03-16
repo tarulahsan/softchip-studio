@@ -10,7 +10,10 @@ import {
   Home, BookOpen, Menu, Sparkles, Target, TrendingUp,
   Eye, RefreshCw, Info, Lightbulb, Rocket, Terminal, Layers2, Workflow,
   Mic, Volume2, FileAudio, FileSpreadsheet, FileImage, Link, Activity,
-  Headphones, Speaker, Save, Copy, FileDown, FolderOpen, Plus, Minus
+  Headphones, Speaker, Save, Copy, FileDown, FolderOpen, Plus, Minus,
+  Bot, MessageSquare, Image as ImageIcon, Languages, Send, Webhook,
+  Mail, Cloud, Server, Repeat, GitBranch, Merge, Clock, Key, Brain,
+  Wand2, FileText, Speech, AudioWaveform, Heart, Code2, Braces
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,14 +26,17 @@ import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-type PinType = 'number' | 'string' | 'boolean' | 'array' | 'object' | 'buffer' | 'any' | 'audio'
-type ChipCategory = 'signal' | 'communication' | 'logic' | 'data' | 'math' | 'security' | 'flow' | 'io' | 'input' | 'output' | 'visual'
+type PinType = 'number' | 'string' | 'boolean' | 'array' | 'object' | 'buffer' | 'any' | 'audio' | 'image'
+type ChipCategory = 'signal' | 'communication' | 'logic' | 'data' | 'math' | 'security' | 'flow' | 'io' | 'input' | 'output' | 'visual' | 'ai' | 'workflow' | 'connector'
 
 interface Pin {
   id: string
@@ -52,7 +58,7 @@ interface ChipDefinition {
   outputs: Pin[]
   params?: { name: string; type: string; default: unknown; description?: string }[]
   isAsync?: boolean
-  execute: (inputs: Record<string, unknown>, params: Record<string, unknown>, state?: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>
+  execute: (inputs: Record<string, unknown>, params: Record<string, unknown>, state?: Record<string, unknown>, context?: AIContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
 
 interface PlacedChip {
@@ -77,8 +83,153 @@ interface Circuit {
   connections: Connection[]
 }
 
+interface AIProvider {
+  name: string
+  apiKey: string
+  baseUrl?: string
+  models?: string[]
+}
+
+interface AIContext {
+  providers: Record<string, AIProvider>
+  getProvider: (name: string) => AIProvider | null
+}
+
+interface AIProviders {
+  openai: AIProvider
+  anthropic: AIProvider
+  zai: AIProvider
+  kimi: AIProvider
+  qwen: AIProvider
+  custom: AIProvider
+}
+
 // ============================================================================
-// CHIP LIBRARY - 50+ FUNCTIONAL CHIPS WITH REAL I/O
+// AI PROVIDER MANAGEMENT
+// ============================================================================
+
+const DEFAULT_PROVIDERS: AIProviders = {
+  openai: { name: 'OpenAI', apiKey: '', baseUrl: 'https://api.openai.com/v1', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
+  anthropic: { name: 'Anthropic', apiKey: '', baseUrl: 'https://api.anthropic.com/v1', models: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'] },
+  zai: { name: 'ZAI', apiKey: '', baseUrl: 'https://api.z.ai/v1', models: ['z-ai-pro', 'z-ai-standard'] },
+  kimi: { name: 'Kimi', apiKey: '', baseUrl: 'https://api.moonshot.cn/v1', models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'] },
+  qwen: { name: 'Qwen', apiKey: '', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-turbo', 'qwen-plus', 'qwen-max'] },
+  custom: { name: 'Custom OpenAI-Compatible', apiKey: '', baseUrl: '', models: [] }
+}
+
+function loadProviders(): AIProviders {
+  if (typeof window === 'undefined') return DEFAULT_PROVIDERS
+  try {
+    const saved = localStorage.getItem('softchip-ai-providers')
+    if (saved) {
+      return { ...DEFAULT_PROVIDERS, ...JSON.parse(saved) }
+    }
+  } catch {}
+  return DEFAULT_PROVIDERS
+}
+
+function saveProviders(providers: AIProviders) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem('softchip-ai-providers', JSON.stringify(providers))
+}
+
+async function callAI(
+  provider: AIProvider,
+  messages: Array<{ role: string; content: string | Array<{type: string; text?: string; image_url?: {url: string}}> }>,
+  params: { model?: string; temperature?: number; maxTokens?: number }
+): Promise<string> {
+  if (!provider.apiKey) {
+    throw new Error(`API key not configured for ${provider.name}`)
+  }
+
+  const model = params.model || provider.models?.[0] || 'gpt-4o-mini'
+  const baseUrl = provider.baseUrl || 'https://api.openai.com/v1'
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${provider.apiKey}`,
+      ...(provider.name === 'Anthropic' ? { 'x-api-key': provider.apiKey, 'anthropic-version': '2023-06-01' } : {})
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: params.temperature ?? 0.7,
+      max_tokens: params.maxTokens ?? 2000
+    })
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`AI API error: ${response.status} - ${error}`)
+  }
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content || ''
+}
+
+async function callAIImage(provider: AIProvider, prompt: string, size: string = '1024x1024'): Promise<string> {
+  if (!provider.apiKey) {
+    throw new Error(`API key not configured for ${provider.name}`)
+  }
+
+  const baseUrl = provider.baseUrl || 'https://api.openai.com/v1'
+
+  const response = await fetch(`${baseUrl}/images/generations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${provider.apiKey}`
+    },
+    body: JSON.stringify({
+      prompt,
+      n: 1,
+      size,
+      response_format: 'url'
+    })
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Image API error: ${response.status} - ${error}`)
+  }
+
+  const data = await response.json()
+  return data.data?.[0]?.url || data.data?.[0]?.b64_json || ''
+}
+
+async function callAIEmbedding(provider: AIProvider, text: string, model?: string): Promise<number[]> {
+  if (!provider.apiKey) {
+    throw new Error(`API key not configured for ${provider.name}`)
+  }
+
+  const baseUrl = provider.baseUrl || 'https://api.openai.com/v1'
+  const embeddingModel = model || 'text-embedding-ada-002'
+
+  const response = await fetch(`${baseUrl}/embeddings`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${provider.apiKey}`
+    },
+    body: JSON.stringify({
+      input: text,
+      model: embeddingModel
+    })
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Embedding API error: ${response.status} - ${error}`)
+  }
+
+  const data = await response.json()
+  return data.data?.[0]?.embedding || []
+}
+
+// ============================================================================
+// CHIP LIBRARY - 70+ FUNCTIONAL CHIPS INCLUDING AI
 // ============================================================================
 
 const CHIP_LIBRARY: ChipDefinition[] = [
@@ -104,34 +255,16 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     isAsync: true,
     execute: async (inputs, params) => {
       const fileData = params.fileData as string
-      const fileName = params.fileName as string
-      
-      if (!fileData) {
-        return { samples: [], sampleRate: 44100, duration: 0, channels: 1 }
-      }
-      
+      if (!fileData) return { samples: [], sampleRate: 44100, duration: 0, channels: 1 }
       try {
-        // Decode audio using Web Audio API
         const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
         const binaryString = atob(fileData.split(',')[1])
         const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i)
-        }
-        
+        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i)
         const audioBuffer = await audioContext.decodeAudioData(bytes.buffer)
         const samples = Array.from(audioBuffer.getChannelData(0))
-        
-        return {
-          samples,
-          sampleRate: audioBuffer.sampleRate,
-          duration: audioBuffer.duration,
-          channels: audioBuffer.numberOfChannels
-        }
-      } catch (error) {
-        console.error('Audio decode error:', error)
-        return { samples: [], sampleRate: 44100, duration: 0, channels: 1 }
-      }
+        return { samples, sampleRate: audioBuffer.sampleRate, duration: audioBuffer.duration, channels: audioBuffer.numberOfChannels }
+      } catch { return { samples: [], sampleRate: 44100, duration: 0, channels: 1 } }
     }
   },
   {
@@ -156,9 +289,7 @@ const CHIP_LIBRARY: ChipDefinition[] = [
         try {
           const data = JSON.parse(captured)
           return { samples: data.samples || [], sampleRate: data.sampleRate || 44100 }
-        } catch {
-          return { samples: [], sampleRate: 44100 }
-        }
+        } catch { return { samples: [], sampleRate: 44100 } }
       }
       return { samples: [], sampleRate: 44100 }
     }
@@ -178,39 +309,21 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     ],
     params: [
       { name: 'fileData', type: 'string', default: '', description: 'CSV content' },
-      { name: 'delimiter', type: 'string', default: ',', description: 'Column delimiter' },
-      { name: 'hasHeader', type: 'boolean', default: true, description: 'First row is header' }
+      { name: 'delimiter', type: 'string', default: ',', description: 'Column delimiter' }
     ],
     execute: (inputs, params) => {
-      const fileData = params.fileData as string
-      const delimiter = (params.delimiter as string) || ','
-      const hasHeader = params.hasHeader !== false
-      
-      if (!fileData) {
-        return { rows: [], headers: [], count: 0 }
-      }
-      
+      const fileData = params.fileData as string || ''
+      const delimiter = params.delimiter as string || ','
+      if (!fileData) return { rows: [], headers: [], count: 0 }
       const lines = fileData.split('\n').filter(l => l.trim())
-      if (lines.length === 0) {
-        return { rows: [], headers: [], count: 0 }
-      }
-      
-      let headers: string[] = []
-      const rows: Record<string, string>[] = []
-      
-      lines.forEach((line, idx) => {
+      if (lines.length === 0) return { rows: [], headers: [], count: 0 }
+      const headers = lines[0].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''))
+      const rows = lines.slice(1).map(line => {
         const values = line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''))
-        if (idx === 0 && hasHeader) {
-          headers = values
-        } else {
-          const row: Record<string, string> = {}
-          values.forEach((val, vIdx) => {
-            row[headers[vIdx] || `col${vIdx}`] = val
-          })
-          rows.push(row)
-        }
+        const row: Record<string, string> = {}
+        values.forEach((val, i) => row[headers[i] || `col${i}`] = val)
+        return row
       })
-      
       return { rows, headers, count: rows.length }
     }
   },
@@ -226,21 +339,11 @@ const CHIP_LIBRARY: ChipDefinition[] = [
       { id: 'data', name: 'Data', type: 'object', description: 'Parsed JSON data' },
       { id: 'valid', name: 'Valid', type: 'boolean', description: 'Is valid JSON' }
     ],
-    params: [
-      { name: 'fileData', type: 'string', default: '', description: 'JSON content' }
-    ],
+    params: [{ name: 'fileData', type: 'string', default: '', description: 'JSON content' }],
     execute: (inputs, params) => {
-      const fileData = params.fileData as string
-      if (!fileData) {
-        return { data: null, valid: false }
-      }
-      
       try {
-        const data = JSON.parse(fileData)
-        return { data, valid: true }
-      } catch {
-        return { data: null, valid: false }
-      }
+        return { data: JSON.parse(params.fileData as string || '{}'), valid: true }
+      } catch { return { data: null, valid: false } }
     }
   },
   {
@@ -251,9 +354,7 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     icon: <Code className="w-4 h-4" />,
     color: '#22c55e',
     inputs: [],
-    outputs: [
-      { id: 'value', name: 'Value', type: 'any', description: 'The input value' }
-    ],
+    outputs: [{ id: 'value', name: 'Value', type: 'any', description: 'The input value' }],
     params: [
       { name: 'value', type: 'string', default: '', description: 'Input value' },
       { name: 'type', type: 'string', default: 'string', description: 'Value type: string, number, json, array' }
@@ -261,68 +362,33 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     execute: (inputs, params) => {
       const value = params.value
       const type = params.type as string
-      
       switch (type) {
-        case 'number':
-          return { value: Number(value) || 0 }
-        case 'json':
-          try {
-            return { value: JSON.parse(String(value)) }
-          } catch {
-            return { value: null }
-          }
-        case 'array':
-          try {
-            const parsed = JSON.parse(String(value))
-            return { value: Array.isArray(parsed) ? parsed : [parsed] }
-          } catch {
-            return { value: String(value).split(',').map(s => s.trim()) }
-          }
-        default:
-          return { value: String(value) }
+        case 'number': return { value: Number(value) || 0 }
+        case 'json': try { return { value: JSON.parse(String(value)) } } catch { return { value: null } }
+        case 'array': try { const p = JSON.parse(String(value)); return { value: Array.isArray(p) ? p : [p] } } catch { return { value: String(value).split(',').map(s => s.trim()) } }
+        default: return { value: String(value) }
       }
     }
   },
   {
-    id: 'number-array-input',
-    name: 'Number Array',
+    id: 'image-input',
+    name: 'Image Input',
     category: 'input',
-    description: 'Input array of numbers for signal processing',
-    icon: <BarChart3 className="w-4 h-4" />,
+    description: 'Upload and process images',
+    icon: <ImageIcon className="w-4 h-4" />,
     color: '#22c55e',
     inputs: [],
     outputs: [
-      { id: 'array', name: 'Array', type: 'array', description: 'Number array' },
-      { id: 'length', name: 'Length', type: 'number', description: 'Array length' }
+      { id: 'dataUrl', name: 'Data URL', type: 'string', description: 'Base64 data URL' },
+      { id: 'width', name: 'Width', type: 'number', description: 'Image width' },
+      { id: 'height', name: 'Height', type: 'number', description: 'Image height' }
     ],
     params: [
-      { name: 'values', type: 'string', default: '1,2,3,4,5', description: 'Comma-separated numbers' },
-      { name: 'generate', type: 'string', default: 'manual', description: 'manual, sine, noise, ramp' },
-      { name: 'count', type: 'number', default: 100, description: 'Number of samples if generated' }
+      { name: 'fileData', type: 'string', default: '', description: 'Base64 image data' },
+      { name: 'fileName', type: 'string', default: '', description: 'File name' }
     ],
     execute: (inputs, params) => {
-      const generate = params.generate as string
-      const count = (params.count as number) || 100
-      
-      let array: number[] = []
-      
-      if (generate === 'sine') {
-        for (let i = 0; i < count; i++) {
-          array.push(Math.sin(2 * Math.PI * i / count * 4))
-        }
-      } else if (generate === 'noise') {
-        for (let i = 0; i < count; i++) {
-          array.push(Math.random() * 2 - 1)
-        }
-      } else if (generate === 'ramp') {
-        for (let i = 0; i < count; i++) {
-          array.push(i / count)
-        }
-      } else {
-        array = String(params.values).split(',').map(s => Number(s.trim())).filter(n => !isNaN(n))
-      }
-      
-      return { array, length: array.length }
+      return { dataUrl: params.fileData || '', width: 0, height: 0 }
     }
   },
 
@@ -335,44 +401,28 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     icon: <Headphones className="w-4 h-4" />,
     color: '#f43f5e',
     inputs: [
-      { id: 'samples', name: 'Samples', type: 'array', required: true, description: 'Audio samples (-1 to 1)' },
-      { id: 'sampleRate', name: 'Sample Rate', type: 'number', required: false, description: 'Sample rate' }
+      { id: 'samples', name: 'Samples', type: 'array', required: true },
+      { id: 'sampleRate', name: 'Sample Rate', type: 'number', required: false }
     ],
     outputs: [
-      { id: 'duration', name: 'Duration', type: 'number', description: 'Duration in seconds' },
-      { id: 'played', name: 'Played', type: 'boolean', description: 'Was audio played' }
-    ],
-    params: [
-      { name: 'autoPlay', type: 'boolean', default: false, description: 'Auto-play on execute' }
+      { id: 'duration', name: 'Duration', type: 'number' },
+      { id: 'played', name: 'Played', type: 'boolean' }
     ],
     isAsync: true,
     execute: async (inputs, params) => {
       const samples = inputs.samples as number[] || []
       const sampleRate = (inputs.sampleRate as number) || 44100
-      
-      if (samples.length === 0) {
-        return { duration: 0, played: false }
-      }
-      
-      const duration = samples.length / sampleRate
-      
-      // Create audio buffer and play
+      if (samples.length === 0) return { duration: 0, played: false }
       try {
         const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
         const audioBuffer = audioContext.createBuffer(1, samples.length, sampleRate)
-        const channelData = audioBuffer.getChannelData(0)
-        channelData.set(samples)
-        
+        audioBuffer.getChannelData(0).set(samples)
         const source = audioContext.createBufferSource()
         source.buffer = audioBuffer
         source.connect(audioContext.destination)
         source.start()
-        
-        return { duration, played: true }
-      } catch (error) {
-        console.error('Audio playback error:', error)
-        return { duration, played: false }
-      }
+        return { duration: samples.length / sampleRate, played: true }
+      } catch { return { duration: samples.length / sampleRate, played: false } }
     }
   },
   {
@@ -382,26 +432,16 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     description: 'Visualize signal as waveform',
     icon: <Activity className="w-4 h-4" />,
     color: '#8b5cf6',
-    inputs: [
-      { id: 'signal', name: 'Signal', type: 'array', required: true, description: 'Signal samples' }
-    ],
+    inputs: [{ id: 'signal', name: 'Signal', type: 'array', required: true }],
     outputs: [
-      { id: 'min', name: 'Min', type: 'number', description: 'Minimum value' },
-      { id: 'max', name: 'Max', type: 'number', description: 'Maximum value' },
-      { id: 'samples', name: 'Samples', type: 'number', description: 'Sample count' }
+      { id: 'min', name: 'Min', type: 'number' },
+      { id: 'max', name: 'Max', type: 'number' },
+      { id: 'samples', name: 'Samples', type: 'number' }
     ],
-    params: [],
     execute: (inputs) => {
       const signal = (inputs.signal as number[]) || []
-      if (signal.length === 0) {
-        return { min: 0, max: 0, samples: 0 }
-      }
-      return {
-        min: Math.min(...signal),
-        max: Math.max(...signal),
-        samples: signal.length,
-        _waveformData: signal
-      }
+      if (signal.length === 0) return { min: 0, max: 0, samples: 0 }
+      return { min: Math.min(...signal), max: Math.max(...signal), samples: signal.length, _waveformData: signal }
     }
   },
   {
@@ -412,36 +452,19 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     icon: <BarChart3 className="w-4 h-4" />,
     color: '#8b5cf6',
     inputs: [
-      { id: 'magnitude', name: 'Magnitude', type: 'array', required: true, description: 'Magnitude spectrum' },
-      { id: 'frequencies', name: 'Frequencies', type: 'array', required: false, description: 'Frequency bins' }
+      { id: 'magnitude', name: 'Magnitude', type: 'array', required: true },
+      { id: 'frequencies', name: 'Frequencies', type: 'array', required: false }
     ],
     outputs: [
-      { id: 'peakFreq', name: 'Peak Freq', type: 'number', description: 'Peak frequency index' },
-      { id: 'peakMag', name: 'Peak Mag', type: 'number', description: 'Peak magnitude' }
+      { id: 'peakFreq', name: 'Peak Freq', type: 'number' },
+      { id: 'peakMag', name: 'Peak Mag', type: 'number' }
     ],
-    params: [],
     execute: (inputs) => {
       const magnitude = (inputs.magnitude as number[]) || []
-      const frequencies = (inputs.frequencies as number[]) || []
-      
-      if (magnitude.length === 0) {
-        return { peakFreq: 0, peakMag: 0 }
-      }
-      
-      let maxIdx = 0
-      let maxVal = magnitude[0]
-      for (let i = 1; i < magnitude.length; i++) {
-        if (magnitude[i] > maxVal) {
-          maxVal = magnitude[i]
-          maxIdx = i
-        }
-      }
-      
-      return {
-        peakFreq: frequencies[maxIdx] || maxIdx,
-        peakMag: maxVal,
-        _spectrumData: { magnitude, frequencies }
-      }
+      if (magnitude.length === 0) return { peakFreq: 0, peakMag: 0 }
+      let maxIdx = 0, maxVal = magnitude[0]
+      magnitude.forEach((m, i) => { if (m > maxVal) { maxVal = m; maxIdx = i } })
+      return { peakFreq: maxIdx, peakMag: maxVal, _spectrumData: { magnitude, frequencies: inputs.frequencies as number[] || [] } }
     }
   },
   {
@@ -451,27 +474,13 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     description: 'Display data in table format',
     icon: <Database className="w-4 h-4" />,
     color: '#8b5cf6',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'array', required: true, description: 'Array of objects' }
-    ],
-    outputs: [
-      { id: 'count', name: 'Count', type: 'number', description: 'Row count' }
-    ],
-    params: [
-      { name: 'maxRows', type: 'number', default: 50, description: 'Maximum rows to display' }
-    ],
+    inputs: [{ id: 'data', name: 'Data', type: 'array', required: true }],
+    outputs: [{ id: 'count', name: 'Count', type: 'number' }],
+    params: [{ name: 'maxRows', type: 'number', default: 50 }],
     execute: (inputs, params) => {
       const data = inputs.data as unknown[]
-      const maxRows = (params.maxRows as number) || 50
-      
-      if (!Array.isArray(data)) {
-        return { count: 0, _tableData: [] }
-      }
-      
-      return {
-        count: data.length,
-        _tableData: data.slice(0, maxRows)
-      }
+      if (!Array.isArray(data)) return { count: 0, _tableData: [] }
+      return { count: data.length, _tableData: data.slice(0, (params.maxRows as number) || 50) }
     }
   },
   {
@@ -481,23 +490,10 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     description: 'Display any value',
     icon: <Eye className="w-4 h-4" />,
     color: '#f43f5e',
-    inputs: [
-      { id: 'value', name: 'Value', type: 'any', required: true, description: 'Value to display' }
-    ],
-    outputs: [
-      { id: 'passthrough', name: 'Out', type: 'any', description: 'Pass-through value' }
-    ],
-    params: [
-      { name: 'label', type: 'string', default: 'Output', description: 'Display label' },
-      { name: 'format', type: 'string', default: 'auto', description: 'Format: auto, json, number, boolean' }
-    ],
-    execute: (inputs, params) => {
-      return {
-        passthrough: inputs.value,
-        _displayValue: inputs.value,
-        _displayLabel: params.label
-      }
-    }
+    inputs: [{ id: 'value', name: 'Value', type: 'any', required: true }],
+    outputs: [{ id: 'passthrough', name: 'Out', type: 'any' }],
+    params: [{ name: 'label', type: 'string', default: 'Output' }],
+    execute: (inputs, params) => ({ passthrough: inputs.value, _displayValue: inputs.value, _displayLabel: params.label })
   },
   {
     id: 'download-output',
@@ -506,55 +502,559 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     description: 'Download data as file',
     icon: <Download className="w-4 h-4" />,
     color: '#f43f5e',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'any', required: true, description: 'Data to download' }
-    ],
-    outputs: [
-      { id: 'success', name: 'Success', type: 'boolean', description: 'Download started' }
-    ],
+    inputs: [{ id: 'data', name: 'Data', type: 'any', required: true }],
+    outputs: [{ id: 'success', name: 'Success', type: 'boolean' }],
     params: [
-      { name: 'filename', type: 'string', default: 'output.json', description: 'File name' },
-      { name: 'format', type: 'string', default: 'json', description: 'Format: json, csv, txt' }
+      { name: 'filename', type: 'string', default: 'output.json' },
+      { name: 'format', type: 'string', default: 'json' }
     ],
     execute: (inputs, params) => {
       const data = inputs.data
-      const filename = params.filename as string
-      const format = params.format as string
-      
-      let content = ''
-      let mimeType = 'text/plain'
-      
-      switch (format) {
-        case 'json':
-          content = JSON.stringify(data, null, 2)
-          mimeType = 'application/json'
-          break
-        case 'csv':
-          if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
-            const headers = Object.keys(data[0] as object)
-            content = [headers.join(','), ...data.map(row => headers.map(h => String((row as Record<string, unknown>)[h])).join(','))].join('\n')
-          } else {
-            content = Array.isArray(data) ? data.join('\n') : String(data)
-          }
-          mimeType = 'text/csv'
-          break
-        default:
-          content = String(data)
+      let content = '', mimeType = 'text/plain'
+      switch (params.format) {
+        case 'json': content = JSON.stringify(data, null, 2); mimeType = 'application/json'; break
+        case 'csv': content = Array.isArray(data) ? data.join('\n') : String(data); mimeType = 'text/csv'; break
+        default: content = String(data)
       }
-      
-      // Create download link
       try {
         const blob = new Blob([content], { type: mimeType })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
+        a.href = url; a.download = params.filename as string; a.click()
         URL.revokeObjectURL(url)
         return { success: true }
-      } catch {
-        return { success: false }
+      } catch { return { success: false } }
+    }
+  },
+  {
+    id: 'image-display',
+    name: 'Image Display',
+    category: 'visual',
+    description: 'Display an image from URL or base64',
+    icon: <ImageIcon className="w-4 h-4" />,
+    color: '#8b5cf6',
+    inputs: [{ id: 'url', name: 'URL', type: 'string', required: true }],
+    outputs: [{ id: 'displayed', name: 'Displayed', type: 'boolean' }],
+    execute: (inputs) => ({ displayed: !!inputs.url, _imageUrl: inputs.url })
+  },
+
+  // ==================== AI CHIPS ====================
+  {
+    id: 'ai-chat',
+    name: 'AI Chat',
+    category: 'ai',
+    description: 'Chat with AI models (GPT, Claude, Kimi, Qwen, etc.)',
+    icon: <MessageSquare className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [
+      { id: 'message', name: 'Message', type: 'string', required: true, description: 'User message' },
+      { id: 'system', name: 'System', type: 'string', required: false, description: 'System prompt' },
+      { id: 'history', name: 'History', type: 'array', required: false, description: 'Conversation history' }
+    ],
+    outputs: [
+      { id: 'response', name: 'Response', type: 'string', description: 'AI response' },
+      { id: 'tokens', name: 'Tokens', type: 'number', description: 'Tokens used (approx)' }
+    ],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai', description: 'AI provider' },
+      { name: 'model', type: 'string', default: 'gpt-4o-mini', description: 'Model name' },
+      { name: 'temperature', type: 'number', default: 0.7, description: 'Temperature (0-2)' },
+      { name: 'maxTokens', type: 'number', default: 2000, description: 'Max tokens' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider ${params.provider} not configured`)
+
+      const messages: Array<{ role: string; content: string }> = []
+      if (inputs.system) messages.push({ role: 'system', content: String(inputs.system) })
+      if (Array.isArray(inputs.history)) {
+        (inputs.history as Array<{role: string; content: string}>).forEach(m => messages.push(m))
       }
+      messages.push({ role: 'user', content: String(inputs.message) })
+
+      const response = await callAI(provider, messages, {
+        model: params.model as string,
+        temperature: params.temperature as number,
+        maxTokens: params.maxTokens as number
+      })
+
+      return { response, tokens: response.length / 4 }
+    }
+  },
+  {
+    id: 'ai-text-generator',
+    name: 'AI Text Generator',
+    category: 'ai',
+    description: 'Generate text with AI',
+    icon: <Wand2 className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [{ id: 'prompt', name: 'Prompt', type: 'string', required: true }],
+    outputs: [{ id: 'text', name: 'Text', type: 'string' }],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'model', type: 'string', default: 'gpt-4o-mini' },
+      { name: 'temperature', type: 'number', default: 0.8 },
+      { name: 'maxTokens', type: 'number', default: 1000 }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const text = await callAI(provider, [{ role: 'user', content: String(inputs.prompt) }], {
+        model: params.model as string,
+        temperature: params.temperature as number,
+        maxTokens: params.maxTokens as number
+      })
+      return { text }
+    }
+  },
+  {
+    id: 'ai-image-generator',
+    name: 'AI Image Generator',
+    category: 'ai',
+    description: 'Generate images with DALL-E or compatible APIs',
+    icon: <ImageIcon className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [{ id: 'prompt', name: 'Prompt', type: 'string', required: true }],
+    outputs: [
+      { id: 'url', name: 'URL', type: 'string' },
+      { id: 'base64', name: 'Base64', type: 'string' }
+    ],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'size', type: 'string', default: '1024x1024' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const url = await callAIImage(provider, String(inputs.prompt), params.size as string)
+      return { url, base64: url.startsWith('http') ? '' : url }
+    }
+  },
+  {
+    id: 'ai-vision',
+    name: 'AI Vision',
+    category: 'ai',
+    description: 'Analyze images with AI vision models',
+    icon: <Eye className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [
+      { id: 'image', name: 'Image URL', type: 'string', required: true },
+      { id: 'question', name: 'Question', type: 'string', required: true }
+    ],
+    outputs: [{ id: 'description', name: 'Description', type: 'string' }],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'model', type: 'string', default: 'gpt-4o' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const messages: Array<{ role: string; content: Array<{type: string; text?: string; image_url?: {url: string}}> }> = [{
+        role: 'user',
+        content: [
+          { type: 'text', text: String(inputs.question) },
+          { type: 'image_url', image_url: { url: String(inputs.image) } }
+        ]
+      }]
+
+      const description = await callAI(provider, messages as unknown as Array<{ role: string; content: string }>, {
+        model: params.model as string
+      })
+      return { description }
+    }
+  },
+  {
+    id: 'ai-embeddings',
+    name: 'AI Embeddings',
+    category: 'ai',
+    description: 'Generate text embeddings for similarity search',
+    icon: <Layers className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [{ id: 'text', name: 'Text', type: 'string', required: true }],
+    outputs: [
+      { id: 'embedding', name: 'Embedding', type: 'array' },
+      { id: 'dimensions', name: 'Dimensions', type: 'number' }
+    ],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'model', type: 'string', default: 'text-embedding-ada-002' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const embedding = await callAIEmbedding(provider, String(inputs.text), params.model as string)
+      return { embedding, dimensions: embedding.length }
+    }
+  },
+  {
+    id: 'ai-summarizer',
+    name: 'AI Summarizer',
+    category: 'ai',
+    description: 'Summarize long text with AI',
+    icon: <FileText className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [{ id: 'text', name: 'Text', type: 'string', required: true }],
+    outputs: [{ id: 'summary', name: 'Summary', type: 'string' }],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'maxLength', type: 'number', default: 200 }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const summary = await callAI(provider, [
+        { role: 'system', content: `Summarize the following text in approximately ${(params.maxLength as number) || 200} words or less. Be concise and capture the key points.` },
+        { role: 'user', content: String(inputs.text) }
+      ], {})
+      return { summary }
+    }
+  },
+  {
+    id: 'ai-translator',
+    name: 'AI Translator',
+    category: 'ai',
+    description: 'Translate text between languages',
+    icon: <Languages className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [{ id: 'text', name: 'Text', type: 'string', required: true }],
+    outputs: [{ id: 'translated', name: 'Translated', type: 'string' }],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'sourceLang', type: 'string', default: 'auto' },
+      { name: 'targetLang', type: 'string', default: 'English' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const translated = await callAI(provider, [
+        { role: 'system', content: `Translate the following text to ${params.targetLang}. ${params.sourceLang !== 'auto' ? `The source language is ${params.sourceLang}.` : ''} Only output the translation, nothing else.` },
+        { role: 'user', content: String(inputs.text) }
+      ], {})
+      return { translated }
+    }
+  },
+  {
+    id: 'ai-code-generator',
+    name: 'AI Code Generator',
+    category: 'ai',
+    description: 'Generate code with AI',
+    icon: <Code2 className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [{ id: 'description', name: 'Description', type: 'string', required: true }],
+    outputs: [{ id: 'code', name: 'Code', type: 'string' }],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'language', type: 'string', default: 'JavaScript' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const code = await callAI(provider, [
+        { role: 'system', content: `You are an expert programmer. Generate clean, efficient ${params.language} code based on the description. Only output the code, no explanations.` },
+        { role: 'user', content: String(inputs.description) }
+      ], {})
+      return { code }
+    }
+  },
+  {
+    id: 'ai-json-extractor',
+    name: 'AI JSON Extractor',
+    category: 'ai',
+    description: 'Extract structured JSON from unstructured text',
+    icon: <Braces className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [
+      { id: 'text', name: 'Text', type: 'string', required: true },
+      { id: 'schema', name: 'Schema', type: 'string', required: false }
+    ],
+    outputs: [
+      { id: 'json', name: 'JSON', type: 'object' },
+      { id: 'valid', name: 'Valid', type: 'boolean' }
+    ],
+    params: [{ name: 'provider', type: 'string', default: 'openai' }],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const schemaHint = inputs.schema ? `Use this schema: ${inputs.schema}` : ''
+      const response = await callAI(provider, [
+        { role: 'system', content: `Extract structured data as JSON from the given text. ${schemaHint} Only output valid JSON, no other text.` },
+        { role: 'user', content: String(inputs.text) }
+      ], {})
+
+      try {
+        const json = JSON.parse(response)
+        return { json, valid: true }
+      } catch {
+        return { json: null, valid: false }
+      }
+    }
+  },
+  {
+    id: 'ai-sentiment',
+    name: 'AI Sentiment',
+    category: 'ai',
+    description: 'Analyze sentiment of text',
+    icon: <Heart className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [{ id: 'text', name: 'Text', type: 'string', required: true }],
+    outputs: [
+      { id: 'sentiment', name: 'Sentiment', type: 'string' },
+      { id: 'score', name: 'Score', type: 'number' }
+    ],
+    params: [{ name: 'provider', type: 'string', default: 'openai' }],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      const response = await callAI(provider, [
+        { role: 'system', content: 'Analyze the sentiment of the text. Reply with only a JSON object: {"sentiment": "positive/negative/neutral", "score": 0.0-1.0}' },
+        { role: 'user', content: String(inputs.text) }
+      ], {})
+
+      try {
+        const parsed = JSON.parse(response)
+        return { sentiment: parsed.sentiment || 'neutral', score: parsed.score || 0.5 }
+      } catch {
+        return { sentiment: 'neutral', score: 0.5 }
+      }
+    }
+  },
+  {
+    id: 'ai-prompt-template',
+    name: 'Prompt Template',
+    category: 'ai',
+    description: 'Create reusable prompt templates with variables',
+    icon: <FileText className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [
+      { id: 'variables', name: 'Variables', type: 'object', required: false, description: 'Template variables as JSON' }
+    ],
+    outputs: [{ id: 'prompt', name: 'Prompt', type: 'string' }],
+    params: [
+      { name: 'template', type: 'string', default: 'Hello {{name}}, please help with {{task}}', description: 'Template with {{variable}} placeholders' }
+    ],
+    execute: (inputs, params) => {
+      let prompt = params.template as string || ''
+      const vars = inputs.variables as Record<string, string> || {}
+      Object.entries(vars).forEach(([key, value]) => {
+        prompt = prompt.replace(new RegExp(`{{${key}}}`, 'g'), String(value))
+      })
+      return { prompt }
+    }
+  },
+  {
+    id: 'ai-chain',
+    name: 'AI Chain',
+    category: 'ai',
+    description: 'Chain multiple AI prompts together',
+    icon: <GitBranch className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [
+      { id: 'input', name: 'Input', type: 'string', required: true },
+      { id: 'previousOutput', name: 'Previous', type: 'string', required: false }
+    ],
+    outputs: [{ id: 'output', name: 'Output', type: 'string' }],
+    params: [
+      { name: 'provider', type: 'string', default: 'openai' },
+      { name: 'promptTemplate', type: 'string', default: 'Given: {{input}}\nPrevious: {{previous}}\nContinue:' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params, state, context) => {
+      const provider = context?.getProvider?.(params.provider as string)
+      if (!provider?.apiKey) throw new Error(`Provider not configured`)
+
+      let prompt = params.promptTemplate as string || ''
+      prompt = prompt.replace('{{input}}', String(inputs.input))
+      prompt = prompt.replace('{{previous}}', String(inputs.previousOutput || ''))
+
+      const output = await callAI(provider, [{ role: 'user', content: prompt }], {})
+      return { output }
+    }
+  },
+  {
+    id: 'ai-memory',
+    name: 'AI Memory',
+    category: 'ai',
+    description: 'Store and retrieve conversation context',
+    icon: <Brain className="w-4 h-4" />,
+    color: '#06b6d4',
+    inputs: [
+      { id: 'message', name: 'Message', type: 'string', required: false },
+      { id: 'role', name: 'Role', type: 'string', required: false }
+    ],
+    outputs: [{ id: 'history', name: 'History', type: 'array' }],
+    params: [{ name: 'maxMessages', type: 'number', default: 10 }],
+    execute: (inputs, params, state) => {
+      const history = (state?.history as Array<{role: string; content: string}>) || []
+      if (inputs.message && inputs.role) {
+        history.push({ role: String(inputs.role), content: String(inputs.message) })
+        while (history.length > ((params.maxMessages as number) || 10)) history.shift()
+      }
+      return { history, _state: { history } }
+    }
+  },
+
+  // ==================== WORKFLOW CHIPS ====================
+  {
+    id: 'workflow-trigger',
+    name: 'Workflow Trigger',
+    category: 'workflow',
+    description: 'Trigger workflow execution',
+    icon: <Play className="w-4 h-4" />,
+    color: '#f97316',
+    inputs: [],
+    outputs: [{ id: 'trigger', name: 'Trigger', type: 'boolean' }],
+    params: [{ name: 'type', type: 'string', default: 'manual', description: 'manual, webhook, schedule' }],
+    execute: () => ({ trigger: true })
+  },
+  {
+    id: 'http-request',
+    name: 'HTTP Request',
+    category: 'connector',
+    description: 'Make HTTP/HTTPS requests',
+    icon: <Globe className="w-4 h-4" />,
+    color: '#0ea5e9',
+    inputs: [
+      { id: 'body', name: 'Body', type: 'object', required: false },
+      { id: 'headers', name: 'Headers', type: 'object', required: false }
+    ],
+    outputs: [
+      { id: 'response', name: 'Response', type: 'object' },
+      { id: 'status', name: 'Status', type: 'number' }
+    ],
+    params: [
+      { name: 'url', type: 'string', default: '', description: 'Request URL' },
+      { name: 'method', type: 'string', default: 'GET', description: 'HTTP method' }
+    ],
+    isAsync: true,
+    execute: async (inputs, params) => {
+      try {
+        const response = await fetch(params.url as string, {
+          method: params.method as string || 'GET',
+          headers: inputs.headers as Record<string, string> || {},
+          body: inputs.body ? JSON.stringify(inputs.body) : undefined
+        })
+        const data = await response.json()
+        return { response: data, status: response.status }
+      } catch (error) {
+        return { response: { error: String(error) }, status: 0 }
+      }
+    }
+  },
+  {
+    id: 'webhook-receiver',
+    name: 'Webhook Receiver',
+    category: 'connector',
+    description: 'Receive webhook data',
+    icon: <Webhook className="w-4 h-4" />,
+    color: '#0ea5e9',
+    inputs: [],
+    outputs: [
+      { id: 'data', name: 'Data', type: 'object' },
+      { id: 'headers', name: 'Headers', type: 'object' }
+    ],
+    params: [{ name: 'path', type: 'string', default: '/webhook', description: 'Webhook path' }],
+    execute: (inputs, params) => ({ data: {}, headers: {} })
+  },
+  {
+    id: 'loop',
+    name: 'Loop',
+    category: 'workflow',
+    description: 'Iterate over array items',
+    icon: <Repeat className="w-4 h-4" />,
+    color: '#f97316',
+    inputs: [{ id: 'array', name: 'Array', type: 'array', required: true }],
+    outputs: [
+      { id: 'item', name: 'Item', type: 'any' },
+      { id: 'index', name: 'Index', type: 'number' }
+    ],
+    params: [],
+    execute: (inputs, params, state) => {
+      const arr = inputs.array as unknown[] || []
+      const idx = (state?.index as number) || 0
+      if (idx < arr.length) {
+        return { item: arr[idx], index: idx, _state: { index: idx + 1 } }
+      }
+      return { item: null, index: -1 }
+    }
+  },
+  {
+    id: 'merge',
+    name: 'Merge',
+    category: 'workflow',
+    description: 'Merge multiple inputs',
+    icon: <Merge className="w-4 h-4" />,
+    color: '#f97316',
+    inputs: [
+      { id: 'a', name: 'A', type: 'any', required: false },
+      { id: 'b', name: 'B', type: 'any', required: false },
+      { id: 'c', name: 'C', type: 'any', required: false }
+    ],
+    outputs: [{ id: 'merged', name: 'Merged', type: 'object' }],
+    execute: (inputs) => ({ merged: inputs })
+  },
+  {
+    id: 'delay',
+    name: 'Delay',
+    category: 'workflow',
+    description: 'Delay execution',
+    icon: <Clock className="w-4 h-4" />,
+    color: '#f97316',
+    inputs: [{ id: 'passthrough', name: 'In', type: 'any', required: false }],
+    outputs: [{ id: 'passthrough', name: 'Out', type: 'any' }],
+    params: [{ name: 'ms', type: 'number', default: 1000, description: 'Delay in milliseconds' }],
+    isAsync: true,
+    execute: async (inputs, params) => {
+      await new Promise(r => setTimeout(r, (params.ms as number) || 1000))
+      return { passthrough: inputs.passthrough }
+    }
+  },
+  {
+    id: 'condition',
+    name: 'Condition',
+    category: 'workflow',
+    description: 'Conditional branching',
+    icon: <GitBranch className="w-4 h-4" />,
+    color: '#f97316',
+    inputs: [
+      { id: 'value', name: 'Value', type: 'any', required: true },
+      { id: 'compare', name: 'Compare', type: 'any', required: false }
+    ],
+    outputs: [
+      { id: 'true', name: 'True', type: 'any' },
+      { id: 'false', name: 'False', type: 'any' }
+    ],
+    params: [{ name: 'operator', type: 'string', default: 'equals', description: 'equals, notEquals, greater, less, contains' }],
+    execute: (inputs, params) => {
+      const val = inputs.value
+      const cmp = inputs.compare
+      let result = false
+      switch (params.operator) {
+        case 'equals': result = val === cmp; break
+        case 'notEquals': result = val !== cmp; break
+        case 'greater': result = Number(val) > Number(cmp); break
+        case 'less': result = Number(val) < Number(cmp); break
+        case 'contains': result = String(val).includes(String(cmp)); break
+      }
+      return { true: result ? val : null, false: result ? null : val }
     }
   },
 
@@ -563,30 +1063,22 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     id: 'fft',
     name: 'FFT',
     category: 'signal',
-    description: 'Fast Fourier Transform for frequency analysis',
+    description: 'Fast Fourier Transform',
     icon: <Signal className="w-4 h-4" />,
     color: '#10b981',
-    inputs: [
-      { id: 'signal', name: 'Signal', type: 'array', required: true, description: 'Input signal array' }
-    ],
+    inputs: [{ id: 'signal', name: 'Signal', type: 'array', required: true }],
     outputs: [
-      { id: 'magnitude', name: 'Magnitude', type: 'array', description: 'Magnitude spectrum' },
-      { id: 'phase', name: 'Phase', type: 'array', description: 'Phase spectrum' },
-      { id: 'frequencies', name: 'Frequencies', type: 'array', description: 'Frequency bins' }
+      { id: 'magnitude', name: 'Magnitude', type: 'array' },
+      { id: 'phase', name: 'Phase', type: 'array' },
+      { id: 'frequencies', name: 'Frequencies', type: 'array' }
     ],
-    params: [
-      { name: 'sampleRate', type: 'number', default: 44100, description: 'Sample rate in Hz' }
-    ],
+    params: [{ name: 'sampleRate', type: 'number', default: 44100 }],
     execute: (inputs, params) => {
       const signal = inputs.signal as number[] || []
       const n = signal.length
       if (n === 0) return { magnitude: [], phase: [], frequencies: [] }
-      
-      const magnitude: number[] = []
-      const phase: number[] = []
-      const frequencies: number[] = []
-      const sampleRate = (params.sampleRate as number) || 44100
-      
+      const magnitude: number[] = [], phase: number[] = [], frequencies: number[] = []
+      const sr = (params.sampleRate as number) || 44100
       for (let k = 0; k < Math.floor(n / 2); k++) {
         let real = 0, imag = 0
         for (let j = 0; j < n; j++) {
@@ -596,9 +1088,8 @@ const CHIP_LIBRARY: ChipDefinition[] = [
         }
         magnitude.push(Math.sqrt(real * real + imag * imag) / n)
         phase.push(Math.atan2(imag, real))
-        frequencies.push((k * sampleRate) / n)
+        frequencies.push((k * sr) / n)
       }
-      
       return { magnitude, phase, frequencies }
     }
   },
@@ -606,48 +1097,34 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     id: 'fir-filter',
     name: 'FIR Filter',
     category: 'signal',
-    description: 'Finite Impulse Response filter',
+    description: 'FIR filter (lowpass/highpass)',
     icon: <Filter className="w-4 h-4" />,
     color: '#10b981',
-    inputs: [
-      { id: 'signal', name: 'Signal', type: 'array', required: true }
-    ],
-    outputs: [
-      { id: 'filtered', name: 'Filtered', type: 'array' }
-    ],
+    inputs: [{ id: 'signal', name: 'Signal', type: 'array', required: true }],
+    outputs: [{ id: 'filtered', name: 'Filtered', type: 'array' }],
     params: [
-      { name: 'type', type: 'string', default: 'lowpass', description: 'Filter type: lowpass, highpass, bandpass' },
-      { name: 'cutoff', type: 'number', default: 0.3, description: 'Normalized cutoff frequency (0-1)' },
-      { name: 'taps', type: 'number', default: 32, description: 'Number of filter taps' }
+      { name: 'type', type: 'string', default: 'lowpass' },
+      { name: 'cutoff', type: 'number', default: 0.3 },
+      { name: 'taps', type: 'number', default: 32 }
     ],
     execute: (inputs, params) => {
       const signal = inputs.signal as number[] || []
-      const type = (params.type as string) || 'lowpass'
-      const taps = (params.taps as number) || 32
-      const cutoff = (params.cutoff as number) || 0.3
-      
+      const type = params.type as string || 'lowpass'
+      const taps = params.taps as number || 32
+      const cutoff = params.cutoff as number || 0.3
       const coeffs: number[] = []
       const M = taps - 1
       for (let n = 0; n < taps; n++) {
-        let h = 0
-        if (n === M / 2) {
-          h = 2 * cutoff
-        } else {
-          h = Math.sin(2 * Math.PI * cutoff * (n - M / 2)) / (Math.PI * (n - M / 2))
-        }
+        let h = n === M / 2 ? 2 * cutoff : Math.sin(2 * Math.PI * cutoff * (n - M / 2)) / (Math.PI * (n - M / 2))
         h *= 0.54 - 0.46 * Math.cos((2 * Math.PI * n) / M)
         coeffs.push(type === 'highpass' ? (n === M / 2 ? 1 - h : -h) : h)
       }
-      
       const filtered: number[] = []
       for (let i = 0; i < signal.length; i++) {
         let sum = 0
-        for (let j = 0; j < taps && i - j >= 0; j++) {
-          sum += signal[i - j] * coeffs[j]
-        }
+        for (let j = 0; j < taps && i - j >= 0; j++) sum += signal[i - j] * coeffs[j]
         filtered.push(sum)
       }
-      
       return { filtered }
     }
   },
@@ -655,133 +1132,37 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     id: 'signal-generator',
     name: 'Signal Generator',
     category: 'signal',
-    description: 'Generate waveforms: sine, square, sawtooth, noise',
+    description: 'Generate waveforms',
     icon: <Zap className="w-4 h-4" />,
     color: '#10b981',
     inputs: [],
-    outputs: [
-      { id: 'signal', name: 'Signal', type: 'array' }
-    ],
+    outputs: [{ id: 'signal', name: 'Signal', type: 'array' }],
     params: [
-      { name: 'type', type: 'string', default: 'sine', description: 'Wave type: sine, square, sawtooth, noise' },
-      { name: 'frequency', type: 'number', default: 5, description: 'Frequency in Hz' },
-      { name: 'amplitude', type: 'number', default: 1, description: 'Amplitude' },
-      { name: 'samples', type: 'number', default: 1000, description: 'Number of samples' },
-      { name: 'sampleRate', type: 'number', default: 44100, description: 'Sample rate' }
+      { name: 'type', type: 'string', default: 'sine' },
+      { name: 'frequency', type: 'number', default: 5 },
+      { name: 'amplitude', type: 'number', default: 1 },
+      { name: 'samples', type: 'number', default: 1000 },
+      { name: 'sampleRate', type: 'number', default: 44100 }
     ],
     execute: (inputs, params) => {
-      const type = (params.type as string) || 'sine'
-      const freq = (params.frequency as number) || 5
-      const amp = (params.amplitude as number) || 1
-      const samples = (params.samples as number) || 1000
-      const sampleRate = (params.sampleRate as number) || 44100
-      
+      const type = params.type as string || 'sine'
+      const freq = params.frequency as number || 5
+      const amp = params.amplitude as number || 1
+      const samples = params.samples as number || 1000
+      const sr = params.sampleRate as number || 44100
       const signal: number[] = []
       for (let i = 0; i < samples; i++) {
-        const t = i / sampleRate
-        let value = 0
+        const t = i / sr
+        let v = 0
         switch (type) {
-          case 'sine':
-            value = amp * Math.sin(2 * Math.PI * freq * t)
-            break
-          case 'square':
-            value = amp * (Math.sin(2 * Math.PI * freq * t) >= 0 ? 1 : -1)
-            break
-          case 'sawtooth':
-            value = amp * (2 * ((freq * t) % 1) - 1)
-            break
-          case 'noise':
-            value = amp * (Math.random() * 2 - 1)
-            break
+          case 'sine': v = amp * Math.sin(2 * Math.PI * freq * t); break
+          case 'square': v = amp * (Math.sin(2 * Math.PI * freq * t) >= 0 ? 1 : -1); break
+          case 'sawtooth': v = amp * (2 * ((freq * t) % 1) - 1); break
+          case 'noise': v = amp * (Math.random() * 2 - 1); break
         }
-        signal.push(value)
+        signal.push(v)
       }
-      
       return { signal }
-    }
-  },
-  {
-    id: 'envelope',
-    name: 'Envelope',
-    category: 'signal',
-    description: 'Extract amplitude envelope',
-    icon: <Activity className="w-4 h-4" />,
-    color: '#10b981',
-    inputs: [
-      { id: 'signal', name: 'Signal', type: 'array', required: true }
-    ],
-    outputs: [
-      { id: 'envelope', name: 'Envelope', type: 'array' }
-    ],
-    params: [
-      { name: 'attack', type: 'number', default: 0.01, description: 'Attack time constant' },
-      { name: 'release', type: 'number', default: 0.1, description: 'Release time constant' }
-    ],
-    execute: (inputs, params) => {
-      const signal = inputs.signal as number[] || []
-      const attack = (params.attack as number) || 0.01
-      const release = (params.release as number) || 0.1
-      
-      const envelope: number[] = []
-      let env = 0
-      
-      for (const sample of signal) {
-        const abs = Math.abs(sample)
-        if (abs > env) {
-          env = env + (abs - env) * attack
-        } else {
-          env = env + (abs - env) * release
-        }
-        envelope.push(env)
-      }
-      
-      return { envelope }
-    }
-  },
-  {
-    id: 'normalize',
-    name: 'Normalize',
-    category: 'signal',
-    description: 'Normalize signal to -1 to 1 range',
-    icon: <Target className="w-4 h-4" />,
-    color: '#10b981',
-    inputs: [
-      { id: 'signal', name: 'Signal', type: 'array', required: true }
-    ],
-    outputs: [
-      { id: 'normalized', name: 'Normalized', type: 'array' }
-    ],
-    params: [],
-    execute: (inputs) => {
-      const signal = inputs.signal as number[] || []
-      if (signal.length === 0) return { normalized: [] }
-      
-      const max = Math.max(...signal.map(Math.abs))
-      if (max === 0) return { normalized: signal }
-      
-      return { normalized: signal.map(s => s / max) }
-    }
-  },
-  {
-    id: 'gain',
-    name: 'Gain',
-    category: 'signal',
-    description: 'Apply gain/volume to signal',
-    icon: <Volume2 className="w-4 h-4" />,
-    color: '#10b981',
-    inputs: [
-      { id: 'signal', name: 'Signal', type: 'array', required: true }
-    ],
-    outputs: [
-      { id: 'output', name: 'Output', type: 'array' }
-    ],
-    params: [
-      { name: 'gain', type: 'number', default: 1, description: 'Gain multiplier' }
-    ],
-    execute: (inputs, params) => {
-      const signal = inputs.signal as number[] || []
-      const gain = (params.gain as number) || 1
-      return { output: signal.map(s => s * gain) }
     }
   },
 
@@ -793,79 +1174,21 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     description: 'Encode data as UART frames',
     icon: <Cable className="w-4 h-4" />,
     color: '#3b82f6',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'string', required: true }
-    ],
+    inputs: [{ id: 'data', name: 'Data', type: 'string', required: true }],
     outputs: [
       { id: 'frames', name: 'Frames', type: 'array' },
-      { id: 'hex', name: 'Hex', type: 'string' },
-      { id: 'bytes', name: 'Bytes', type: 'array' }
+      { id: 'hex', name: 'Hex', type: 'string' }
     ],
-    params: [
-      { name: 'baudRate', type: 'number', default: 9600, description: 'Baud rate' },
-      { name: 'dataBits', type: 'number', default: 8, description: 'Data bits (5-9)' },
-      { name: 'parity', type: 'string', default: 'none', description: 'Parity: none, even, odd' }
-    ],
+    params: [{ name: 'baudRate', type: 'number', default: 9600 }],
     execute: (inputs, params) => {
       const data = String(inputs.data || '')
-      const dataBits = (params.dataBits as number) || 8
-      const parity = (params.parity as string) || 'none'
-      
-      const frames: unknown[] = []
-      const hexParts: string[] = []
-      const bytes: number[] = []
-      
+      const frames: unknown[] = [], hexParts: string[] = []
       for (const char of data) {
         const code = char.charCodeAt(0)
-        bytes.push(code)
-        
-        const bits: number[] = []
-        for (let i = 0; i < dataBits; i++) {
-          bits.push((code >> i) & 1)
-        }
-        
-        if (parity !== 'none') {
-          const ones = bits.reduce((a, b) => a + b, 0)
-          bits.push(parity === 'even' ? ones % 2 : (ones + 1) % 2)
-        }
-        
-        frames.push({ startBit: 0, dataBits: bits, stopBit: 1, char })
+        frames.push({ startBit: 0, data: code, stopBit: 1, char })
         hexParts.push(code.toString(16).padStart(2, '0').toUpperCase())
       }
-      
-      return { frames, hex: hexParts.join(' '), bytes }
-    }
-  },
-  {
-    id: 'uart-decoder',
-    name: 'UART Decode',
-    category: 'communication',
-    description: 'Decode UART hex to text',
-    icon: <Cable className="w-4 h-4" />,
-    color: '#3b82f6',
-    inputs: [
-      { id: 'hex', name: 'Hex', type: 'string', required: false },
-      { id: 'bytes', name: 'Bytes', type: 'array', required: false }
-    ],
-    outputs: [
-      { id: 'text', name: 'Text', type: 'string' },
-      { id: 'bytes', name: 'Bytes', type: 'array' }
-    ],
-    params: [],
-    execute: (inputs) => {
-      let bytes: number[] = []
-      
-      if (inputs.hex) {
-        const hex = String(inputs.hex).replace(/\s+/g, '')
-        for (let i = 0; i < hex.length; i += 2) {
-          bytes.push(parseInt(hex.substr(i, 2), 16))
-        }
-      } else if (inputs.bytes && Array.isArray(inputs.bytes)) {
-        bytes = inputs.bytes as number[]
-      }
-      
-      const text = bytes.map(b => String.fromCharCode(b)).join('')
-      return { text, bytes }
+      return { frames, hex: hexParts.join(' ') }
     }
   },
   {
@@ -878,50 +1201,29 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     inputs: [],
     outputs: [
       { id: 'frame', name: 'Frame', type: 'object' },
-      { id: 'hex', name: 'Hex', type: 'string' },
-      { id: 'crc', name: 'CRC', type: 'number' }
+      { id: 'hex', name: 'Hex', type: 'string' }
     ],
     params: [
-      { name: 'slaveId', type: 'number', default: 1, description: 'Slave ID (1-247)' },
-      { name: 'function', type: 'string', default: '03', description: 'Function code (hex)' },
-      { name: 'register', type: 'number', default: 0, description: 'Register address' },
-      { name: 'count', type: 'number', default: 1, description: 'Register count' }
+      { name: 'slaveId', type: 'number', default: 1 },
+      { name: 'function', type: 'string', default: '03' },
+      { name: 'register', type: 'number', default: 0 },
+      { name: 'count', type: 'number', default: 1 }
     ],
     execute: (inputs, params) => {
-      const slaveId = (params.slaveId as number) || 1
-      const funcCode = parseInt((params.function as string) || '03', 16)
-      const register = (params.register as number) || 0
-      const count = (params.count as number) || 1
-      
-      const frame: number[] = [
-        slaveId,
-        funcCode,
-        (register >> 8) & 0xFF,
-        register & 0xFF,
-        (count >> 8) & 0xFF,
-        count & 0xFF
-      ]
-      
+      const slaveId = params.slaveId as number || 1
+      const funcCode = parseInt(params.function as string || '03', 16)
+      const register = params.register as number || 0
+      const count = params.count as number || 1
+      const frame = [slaveId, funcCode, (register >> 8) & 0xFF, register & 0xFF, (count >> 8) & 0xFF, count & 0xFF]
       let crc = 0xFFFF
       for (const byte of frame) {
         crc ^= byte
         for (let i = 0; i < 8; i++) {
-          if (crc & 0x0001) {
-            crc = (crc >> 1) ^ 0xA001
-          } else {
-            crc >>= 1
-          }
+          crc = (crc & 0x0001) ? ((crc >> 1) ^ 0xA001) : (crc >> 1)
         }
       }
-      
-      frame.push(crc & 0xFF)
-      frame.push((crc >> 8) & 0xFF)
-      
-      return {
-        frame: { bytes: frame, slaveId, function: funcCode, register, count },
-        hex: frame.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' '),
-        crc
-      }
+      frame.push(crc & 0xFF, (crc >> 8) & 0xFF)
+      return { frame: { bytes: frame }, hex: frame.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') }
     }
   },
 
@@ -937,10 +1239,7 @@ const CHIP_LIBRARY: ChipDefinition[] = [
       { id: 'a', name: 'A', type: 'boolean', required: true },
       { id: 'b', name: 'B', type: 'boolean', required: true }
     ],
-    outputs: [
-      { id: 'out', name: 'Out', type: 'boolean' }
-    ],
-    params: [],
+    outputs: [{ id: 'out', name: 'Out', type: 'boolean' }],
     execute: (inputs) => ({ out: Boolean(inputs.a) && Boolean(inputs.b) })
   },
   {
@@ -954,27 +1253,8 @@ const CHIP_LIBRARY: ChipDefinition[] = [
       { id: 'a', name: 'A', type: 'boolean', required: true },
       { id: 'b', name: 'B', type: 'boolean', required: true }
     ],
-    outputs: [
-      { id: 'out', name: 'Out', type: 'boolean' }
-    ],
-    params: [],
+    outputs: [{ id: 'out', name: 'Out', type: 'boolean' }],
     execute: (inputs) => ({ out: Boolean(inputs.a) || Boolean(inputs.b) })
-  },
-  {
-    id: 'logic-not',
-    name: 'NOT',
-    category: 'logic',
-    description: 'Logical NOT gate',
-    icon: <Cpu className="w-4 h-4" />,
-    color: '#f59e0b',
-    inputs: [
-      { id: 'in', name: 'In', type: 'boolean', required: true }
-    ],
-    outputs: [
-      { id: 'out', name: 'Out', type: 'boolean' }
-    ],
-    params: [],
-    execute: (inputs) => ({ out: !Boolean(inputs.in) })
   },
   {
     id: 'comparator',
@@ -992,16 +1272,11 @@ const CHIP_LIBRARY: ChipDefinition[] = [
       { id: 'greater', name: 'A > B', type: 'boolean' },
       { id: 'less', name: 'A < B', type: 'boolean' }
     ],
-    params: [],
-    execute: (inputs) => {
-      const a = Number(inputs.a) || 0
-      const b = Number(inputs.b) || 0
-      return {
-        equal: a === b,
-        greater: a > b,
-        less: a < b
-      }
-    }
+    execute: (inputs) => ({
+      equal: inputs.a === inputs.b,
+      greater: Number(inputs.a) > Number(inputs.b),
+      less: Number(inputs.a) < Number(inputs.b)
+    })
   },
 
   // ==================== MATH CHIPS ====================
@@ -1009,37 +1284,19 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     id: 'calculator',
     name: 'Calculator',
     category: 'math',
-    description: 'Basic arithmetic operations',
+    description: 'Basic arithmetic',
     icon: <Calculator className="w-4 h-4" />,
     color: '#ec4899',
     inputs: [
       { id: 'a', name: 'A', type: 'number', required: true },
       { id: 'b', name: 'B', type: 'number', required: false }
     ],
-    outputs: [
-      { id: 'result', name: 'Result', type: 'number' }
-    ],
-    params: [
-      { name: 'operation', type: 'string', default: 'add', description: 'add, sub, mul, div, mod, pow, sqrt, abs' }
-    ],
+    outputs: [{ id: 'result', name: 'Result', type: 'number' }],
+    params: [{ name: 'operation', type: 'string', default: 'add' }],
     execute: (inputs, params) => {
-      const a = Number(inputs.a) || 0
-      const b = Number(inputs.b) || 0
-      const op = (params.operation as string) || 'add'
-      
-      let result = 0
-      switch (op) {
-        case 'add': result = a + b; break
-        case 'sub': result = a - b; break
-        case 'mul': result = a * b; break
-        case 'div': result = b !== 0 ? a / b : 0; break
-        case 'mod': result = a % b; break
-        case 'pow': result = Math.pow(a, b); break
-        case 'sqrt': result = Math.sqrt(a); break
-        case 'abs': result = Math.abs(a); break
-      }
-      
-      return { result }
+      const a = Number(inputs.a) || 0, b = Number(inputs.b) || 0
+      const ops: Record<string, number> = { add: a + b, sub: a - b, mul: a * b, div: b ? a / b : 0, pow: Math.pow(a, b), sqrt: Math.sqrt(a), abs: Math.abs(a) }
+      return { result: ops[params.operation as string] || 0 }
     }
   },
   {
@@ -1049,9 +1306,7 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     description: 'Statistical analysis',
     icon: <BarChart3 className="w-4 h-4" />,
     color: '#ec4899',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'array', required: true }
-    ],
+    inputs: [{ id: 'data', name: 'Data', type: 'array', required: true }],
     outputs: [
       { id: 'mean', name: 'Mean', type: 'number' },
       { id: 'median', name: 'Median', type: 'number' },
@@ -1059,58 +1314,14 @@ const CHIP_LIBRARY: ChipDefinition[] = [
       { id: 'min', name: 'Min', type: 'number' },
       { id: 'max', name: 'Max', type: 'number' }
     ],
-    params: [],
     execute: (inputs) => {
       const data = (inputs.data as number[]) || []
       if (data.length === 0) return { mean: 0, median: 0, stdDev: 0, min: 0, max: 0 }
-      
       const sorted = [...data].sort((a, b) => a - b)
       const mean = data.reduce((a, b) => a + b, 0) / data.length
-      const median = data.length % 2 === 0
-        ? (sorted[data.length / 2 - 1] + sorted[data.length / 2]) / 2
-        : sorted[Math.floor(data.length / 2)]
-      const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length
-      const stdDev = Math.sqrt(variance)
-      
-      return { mean, median, stdDev, min: sorted[0], max: sorted[sorted.length - 1] }
-    }
-  },
-  {
-    id: 'pid-controller',
-    name: 'PID Controller',
-    category: 'math',
-    description: 'PID control algorithm',
-    icon: <Target className="w-4 h-4" />,
-    color: '#ec4899',
-    inputs: [
-      { id: 'setpoint', name: 'Setpoint', type: 'number', required: true },
-      { id: 'processValue', name: 'PV', type: 'number', required: true }
-    ],
-    outputs: [
-      { id: 'output', name: 'Output', type: 'number' },
-      { id: 'error', name: 'Error', type: 'number' }
-    ],
-    params: [
-      { name: 'kp', type: 'number', default: 1, description: 'Proportional gain' },
-      { name: 'ki', type: 'number', default: 0.1, description: 'Integral gain' },
-      { name: 'kd', type: 'number', default: 0.01, description: 'Derivative gain' }
-    ],
-    execute: (inputs, params, state) => {
-      const setpoint = Number(inputs.setpoint) || 0
-      const pv = Number(inputs.processValue) || 0
-      const kp = Number(params.kp) || 1
-      const ki = Number(params.ki) || 0.1
-      const kd = Number(params.kd) || 0.01
-      
-      const prevError = (state?.prevError as number) || 0
-      const integral = (state?.integral as number) || 0
-      
-      const error = setpoint - pv
-      const newIntegral = integral + error
-      const derivative = error - prevError
-      const output = kp * error + ki * newIntegral + kd * derivative
-      
-      return { output, error, _state: { prevError: error, integral: newIntegral } }
+      const median = data.length % 2 === 0 ? (sorted[data.length / 2 - 1] + sorted[data.length / 2]) / 2 : sorted[Math.floor(data.length / 2)]
+      const variance = data.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / data.length
+      return { mean, median, stdDev: Math.sqrt(variance), min: sorted[0], max: sorted[sorted.length - 1] }
     }
   },
 
@@ -1119,7 +1330,7 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     id: 'json-parser',
     name: 'JSON Parser',
     category: 'data',
-    description: 'Parse and stringify JSON',
+    description: 'Parse/stringify JSON',
     icon: <FileJson className="w-4 h-4" />,
     color: '#8b5cf6',
     inputs: [
@@ -1131,30 +1342,17 @@ const CHIP_LIBRARY: ChipDefinition[] = [
       { id: 'string', name: 'String', type: 'string' },
       { id: 'valid', name: 'Valid', type: 'boolean' }
     ],
-    params: [
-      { name: 'mode', type: 'string', default: 'parse', description: 'Mode: parse or stringify' }
-    ],
+    params: [{ name: 'mode', type: 'string', default: 'parse' }],
     execute: (inputs, params) => {
-      const mode = (params.mode as string) || 'parse'
-      let parsed: unknown = null
-      let string = ''
-      let valid = false
-      
       try {
-        if (mode === 'parse' && inputs.data) {
-          parsed = JSON.parse(String(inputs.data))
-          string = String(inputs.data)
-          valid = true
-        } else if (mode === 'stringify' && inputs.object) {
-          parsed = inputs.object
-          string = JSON.stringify(inputs.object, null, 2)
-          valid = true
+        if (params.mode === 'parse' && inputs.data) {
+          const parsed = JSON.parse(String(inputs.data))
+          return { parsed, string: String(inputs.data), valid: true }
+        } else if (params.mode === 'stringify' && inputs.object) {
+          return { parsed: inputs.object, string: JSON.stringify(inputs.object, null, 2), valid: true }
         }
-      } catch {
-        valid = false
-      }
-      
-      return { parsed, string, valid }
+      } catch {}
+      return { parsed: null, string: '', valid: false }
     }
   },
   {
@@ -1164,424 +1362,215 @@ const CHIP_LIBRARY: ChipDefinition[] = [
     description: 'Base64 encode/decode',
     icon: <Code className="w-4 h-4" />,
     color: '#8b5cf6',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'string', required: true }
-    ],
+    inputs: [{ id: 'data', name: 'Data', type: 'string', required: true }],
     outputs: [
       { id: 'encoded', name: 'Encoded', type: 'string' },
       { id: 'decoded', name: 'Decoded', type: 'string' }
     ],
-    params: [
-      { name: 'mode', type: 'string', default: 'encode', description: 'Mode: encode or decode' }
-    ],
+    params: [{ name: 'mode', type: 'string', default: 'encode' }],
     execute: (inputs, params) => {
       const data = String(inputs.data || '')
-      const mode = (params.mode as string) || 'encode'
-      
+      if (params.mode === 'encode') {
+        return { encoded: btoa(data), decoded: data }
+      }
       try {
-        if (mode === 'encode') {
-          return { encoded: btoa(data), decoded: data }
-        } else {
-          return { encoded: data, decoded: atob(data) }
-        }
+        return { encoded: data, decoded: atob(data) }
       } catch {
-        return { encoded: '', decoded: '' }
+        return { encoded: data, decoded: '' }
       }
     }
   },
-  {
-    id: 'array-operations',
-    name: 'Array Ops',
-    category: 'data',
-    description: 'Array operations: map, filter, reduce',
-    icon: <Layers className="w-4 h-4" />,
-    color: '#8b5cf6',
-    inputs: [
-      { id: 'array', name: 'Array', type: 'array', required: true }
-    ],
-    outputs: [
-      { id: 'result', name: 'Result', type: 'array' },
-      { id: 'length', name: 'Length', type: 'number' }
-    ],
-    params: [
-      { name: 'operation', type: 'string', default: 'slice', description: 'slice, reverse, sort, unique, flatten' },
-      { name: 'start', type: 'number', default: 0, description: 'Start index (for slice)' },
-      { name: 'end', type: 'number', default: -1, description: 'End index (for slice)' }
-    ],
-    execute: (inputs, params) => {
-      const arr = (inputs.array as unknown[]) || []
-      const op = (params.operation as string) || 'slice'
-      const start = (params.start as number) || 0
-      const end = (params.end as number) || arr.length
-      
-      let result: unknown[] = arr
-      
-      switch (op) {
-        case 'slice':
-          result = arr.slice(start, end === -1 ? undefined : end)
-          break
-        case 'reverse':
-          result = [...arr].reverse()
-          break
-        case 'sort':
-          result = [...arr].sort((a, b) => Number(a) - Number(b))
-          break
-        case 'unique':
-          result = [...new Set(arr)]
-          break
-        case 'flatten':
-          result = arr.flat(Infinity)
-          break
-      }
-      
-      return { result, length: result.length }
-    }
-  },
-
-  // ==================== SECURITY CHIPS ====================
   {
     id: 'hash',
     name: 'Hash',
     category: 'security',
-    description: 'Generate SHA-256 hash',
+    description: 'Generate hash (SHA-256)',
     icon: <Shield className="w-4 h-4" />,
     color: '#ef4444',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'string', required: true }
-    ],
-    outputs: [
-      { id: 'hash', name: 'Hash', type: 'string' },
-      { id: 'length', name: 'Length', type: 'number' }
-    ],
-    params: [],
+    inputs: [{ id: 'data', name: 'Data', type: 'string', required: true }],
+    outputs: [{ id: 'hash', name: 'Hash', type: 'string' }],
     isAsync: true,
     execute: async (inputs) => {
-      const data = String(inputs.data || '')
-      
-      try {
-        const encoder = new TextEncoder()
-        const dataBuffer = encoder.encode(data)
-        const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer)
-        const hashArray = Array.from(new Uint8Array(hashBuffer))
-        const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-        
-        return { hash, length: hash.length }
-      } catch {
-        let hash = 0
-        for (let i = 0; i < data.length; i++) {
-          hash = ((hash << 5) - hash) + data.charCodeAt(i)
-          hash = hash & hash
-        }
-        return { hash: Math.abs(hash).toString(16).padStart(64, '0'), length: 64 }
-      }
+      const encoder = new TextEncoder()
+      const data = encoder.encode(String(inputs.data || ''))
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+      const hashArray = Array.from(new Uint8Array(hashBuffer))
+      return { hash: hashArray.map(b => b.toString(16).padStart(2, '0')).join('') }
     }
-  },
-  {
-    id: 'crc',
-    name: 'CRC',
-    category: 'security',
-    description: 'Generate CRC checksums',
-    icon: <Shield className="w-4 h-4" />,
-    color: '#ef4444',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'array', required: true }
-    ],
-    outputs: [
-      { id: 'crc8', name: 'CRC-8', type: 'number' },
-      { id: 'crc16', name: 'CRC-16', type: 'number' }
-    ],
-    params: [],
-    execute: (inputs) => {
-      const data = (inputs.data as number[]) || []
-      
-      let crc8 = 0
-      for (const byte of data) {
-        crc8 ^= byte
-        for (let i = 0; i < 8; i++) {
-          if (crc8 & 0x80) crc8 = (crc8 << 1) ^ 0x07
-          else crc8 <<= 1
-        }
-        crc8 &= 0xFF
-      }
-      
-      let crc16 = 0xFFFF
-      for (const byte of data) {
-        crc16 ^= byte
-        for (let i = 0; i < 8; i++) {
-          if (crc16 & 0x0001) crc16 = (crc16 >> 1) ^ 0xA001
-          else crc16 >>= 1
-        }
-      }
-      
-      return { crc8, crc16 }
-    }
-  },
-  {
-    id: 'random',
-    name: 'Random',
-    category: 'security',
-    description: 'Generate random values',
-    icon: <RefreshCw className="w-4 h-4" />,
-    color: '#ef4444',
-    inputs: [],
-    outputs: [
-      { id: 'number', name: 'Number', type: 'number' },
-      { id: 'uuid', name: 'UUID', type: 'string' }
-    ],
-    params: [
-      { name: 'min', type: 'number', default: 0, description: 'Minimum value' },
-      { name: 'max', type: 'number', default: 100, description: 'Maximum value' }
-    ],
-    execute: (inputs, params) => {
-      const min = Number(params.min) || 0
-      const max = Number(params.max) || 100
-      
-      const num = Math.floor(Math.random() * (max - min + 1)) + min
-      const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        const r = Math.random() * 16 | 0
-        const v = c === 'x' ? r : (r & 0x3 | 0x8)
-        return v.toString(16)
-      })
-      
-      return { number: num, uuid }
-    }
-  },
-
-  // ==================== FLOW CHIPS ====================
-  {
-    id: 'router',
-    name: 'Router',
-    category: 'flow',
-    description: 'Route data based on condition',
-    icon: <ArrowRight className="w-4 h-4" />,
-    color: '#06b6d4',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'any', required: true },
-      { id: 'condition', name: 'Condition', type: 'boolean', required: false }
-    ],
-    outputs: [
-      { id: 'true', name: 'True', type: 'any' },
-      { id: 'false', name: 'False', type: 'any' }
-    ],
-    params: [],
-    execute: (inputs) => ({
-      true: inputs.condition ? inputs.data : undefined,
-      false: !inputs.condition ? inputs.data : undefined
-    })
-  },
-  {
-    id: 'merger',
-    name: 'Merger',
-    category: 'flow',
-    description: 'Merge two data streams',
-    icon: <Layers className="w-4 h-4" />,
-    color: '#06b6d4',
-    inputs: [
-      { id: 'a', name: 'A', type: 'any', required: false },
-      { id: 'b', name: 'B', type: 'any', required: false }
-    ],
-    outputs: [
-      { id: 'merged', name: 'Merged', type: 'array' }
-    ],
-    params: [],
-    execute: (inputs) => {
-      const merged: unknown[] = []
-      if (Array.isArray(inputs.a)) merged.push(...inputs.a)
-      else if (inputs.a !== undefined) merged.push(inputs.a)
-      if (Array.isArray(inputs.b)) merged.push(...inputs.b)
-      else if (inputs.b !== undefined) merged.push(inputs.b)
-      return { merged }
-    }
-  },
-  {
-    id: 'delay',
-    name: 'Delay',
-    category: 'flow',
-    description: 'Delay data propagation',
-    icon: <Timer className="w-4 h-4" />,
-    color: '#06b6d4',
-    inputs: [
-      { id: 'data', name: 'Data', type: 'any', required: true }
-    ],
-    outputs: [
-      { id: 'data', name: 'Data', type: 'any' }
-    ],
-    params: [
-      { name: 'delayMs', type: 'number', default: 100, description: 'Delay in milliseconds' }
-    ],
-    execute: (inputs) => ({ data: inputs.data })
   }
 ]
 
 // ============================================================================
-// DEMO TEMPLATES
+// TEMPLATES
 // ============================================================================
 
-const DEMO_TEMPLATES = [
+const TEMPLATES = [
+  {
+    id: 'ai-chatbot',
+    name: 'AI Chatbot Pipeline',
+    description: 'Build a conversational AI with memory',
+    icon: <Bot className="w-5 h-5" />,
+    chips: [
+      { chipId: 'text-input', position: { x: 100, y: 100 }, params: { value: 'Hello, how are you?' } },
+      { chipId: 'ai-memory', position: { x: 350, y: 50 }, params: {} },
+      { chipId: 'ai-chat', position: { x: 600, y: 100 }, params: { provider: 'openai', model: 'gpt-4o-mini' } },
+      { chipId: 'value-display', position: { x: 850, y: 100 }, params: { label: 'AI Response' } }
+    ],
+    connections: [
+      { fromChip: 'text-input-0', fromPin: 'value', toChip: 'ai-chat-0', toPin: 'message' },
+      { fromChip: 'ai-memory-0', fromPin: 'history', toChip: 'ai-chat-0', toPin: 'history' },
+      { fromChip: 'ai-chat-0', fromPin: 'response', toChip: 'value-display-0', toPin: 'value' }
+    ]
+  },
   {
     id: 'audio-analyzer',
-    name: 'Audio Analyzer',
-    description: 'Upload audio file, compute FFT spectrum',
-    category: 'Audio',
-    circuit: {
-      chips: [
-        { instanceId: 'audio1', chipId: 'audio-file-input', position: { x: 50, y: 80 }, params: {}, inputValues: {}, outputValues: {} },
-        { instanceId: 'fft1', chipId: 'fft', position: { x: 300, y: 80 }, params: { sampleRate: 44100 }, inputValues: {}, outputValues: {} },
-        { instanceId: 'spectrum1', chipId: 'spectrum-display', position: { x: 550, y: 80 }, params: {}, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'audio1', fromPin: 'samples', toChip: 'fft1', toPin: 'signal' },
-        { id: 'c2', fromChip: 'fft1', fromPin: 'magnitude', toChip: 'spectrum1', toPin: 'magnitude' },
-        { id: 'c3', fromChip: 'fft1', fromPin: 'frequencies', toChip: 'spectrum1', toPin: 'frequencies' }
-      ]
-    }
+    name: 'Audio Spectrum Analyzer',
+    description: 'Analyze audio frequencies',
+    icon: <AudioWaveform className="w-5 h-5" />,
+    chips: [
+      { chipId: 'audio-file-input', position: { x: 100, y: 150 }, params: {} },
+      { chipId: 'fft', position: { x: 350, y: 150 }, params: { sampleRate: 44100 } },
+      { chipId: 'spectrum-display', position: { x: 600, y: 150 }, params: {} },
+      { chipId: 'waveform-display', position: { x: 600, y: 300 }, params: {} }
+    ],
+    connections: [
+      { fromChip: 'audio-file-input-0', fromPin: 'samples', toChip: 'fft-0', toPin: 'signal' },
+      { fromChip: 'fft-0', fromPin: 'magnitude', toChip: 'spectrum-display-0', toPin: 'magnitude' },
+      { fromChip: 'audio-file-input-0', fromPin: 'samples', toChip: 'waveform-display-0', toPin: 'signal' }
+    ]
   },
   {
-    id: 'signal-filter-demo',
-    name: 'Signal Filter Demo',
-    description: 'Generate signal, filter, visualize',
-    category: 'Signal',
-    circuit: {
-      chips: [
-        { instanceId: 'gen1', chipId: 'signal-generator', position: { x: 50, y: 60 }, params: { type: 'sine', frequency: 10, samples: 500 }, inputValues: {}, outputValues: {} },
-        { instanceId: 'filter1', chipId: 'fir-filter', position: { x: 300, y: 60 }, params: { type: 'lowpass', cutoff: 0.2 }, inputValues: {}, outputValues: {} },
-        { instanceId: 'wave1', chipId: 'waveform-display', position: { x: 550, y: 60 }, params: {}, inputValues: {}, outputValues: {} },
-        { instanceId: 'player1', chipId: 'audio-player', position: { x: 550, y: 180 }, params: {}, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'gen1', fromPin: 'signal', toChip: 'filter1', toPin: 'signal' },
-        { id: 'c2', fromChip: 'filter1', fromPin: 'filtered', toChip: 'wave1', toPin: 'signal' },
-        { id: 'c3', fromChip: 'filter1', fromPin: 'filtered', toChip: 'player1', toPin: 'samples' }
-      ]
-    }
+    id: 'ai-translator',
+    name: 'Multi-Language Translator',
+    description: 'Translate text to any language',
+    icon: <Languages className="w-5 h-5" />,
+    chips: [
+      { chipId: 'text-input', position: { x: 100, y: 150 }, params: { value: 'Hello, world!' } },
+      { chipId: 'ai-translator', position: { x: 350, y: 150 }, params: { provider: 'openai', targetLang: 'Spanish' } },
+      { chipId: 'value-display', position: { x: 600, y: 150 }, params: { label: 'Translation' } }
+    ],
+    connections: [
+      { fromChip: 'text-input-0', fromPin: 'value', toChip: 'ai-translator-0', toPin: 'text' },
+      { fromChip: 'ai-translator-0', fromPin: 'translated', toChip: 'value-display-0', toPin: 'value' }
+    ]
   },
   {
-    id: 'csv-statistics',
-    name: 'CSV Statistics',
-    description: 'Upload CSV, compute statistics',
-    category: 'Data',
-    circuit: {
-      chips: [
-        { instanceId: 'csv1', chipId: 'csv-file-input', position: { x: 50, y: 80 }, params: {}, inputValues: {}, outputValues: {} },
-        { instanceId: 'table1', chipId: 'data-table', position: { x: 300, y: 20 }, params: {}, inputValues: {}, outputValues: {} },
-        { instanceId: 'display1', chipId: 'value-display', position: { x: 300, y: 140 }, params: { label: 'Row Count' }, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'csv1', fromPin: 'rows', toChip: 'table1', toPin: 'data' },
-        { id: 'c2', fromChip: 'csv1', fromPin: 'count', toChip: 'display1', toPin: 'value' }
-      ]
-    }
+    id: 'ai-summarizer',
+    name: 'Document Summarizer',
+    description: 'Summarize long documents with AI',
+    icon: <FileText className="w-5 h-5" />,
+    chips: [
+      { chipId: 'text-input', position: { x: 100, y: 150 }, params: { value: 'Paste your long text here...' } },
+      { chipId: 'ai-summarizer', position: { x: 350, y: 150 }, params: { provider: 'openai', maxLength: 200 } },
+      { chipId: 'value-display', position: { x: 600, y: 150 }, params: { label: 'Summary' } }
+    ],
+    connections: [
+      { fromChip: 'text-input-0', fromPin: 'value', toChip: 'ai-summarizer-0', toPin: 'text' },
+      { fromChip: 'ai-summarizer-0', fromPin: 'summary', toChip: 'value-display-0', toPin: 'value' }
+    ]
   },
   {
-    id: 'uart-testing',
-    name: 'UART Protocol Testing',
-    description: 'Encode text as UART frames',
-    category: 'Communication',
-    circuit: {
-      chips: [
-        { instanceId: 'text1', chipId: 'text-input', position: { x: 50, y: 80 }, params: { value: 'Hello', type: 'string' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'uart1', chipId: 'uart-encoder', position: { x: 300, y: 80 }, params: { baudRate: 115200 }, inputValues: {}, outputValues: {} },
-        { instanceId: 'display1', chipId: 'value-display', position: { x: 550, y: 40 }, params: { label: 'Hex Output' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'table1', chipId: 'data-table', position: { x: 550, y: 140 }, params: { label: 'Frames' }, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'text1', fromPin: 'value', toChip: 'uart1', toPin: 'data' },
-        { id: 'c2', fromChip: 'uart1', fromPin: 'hex', toChip: 'display1', toPin: 'value' },
-        { id: 'c3', fromChip: 'uart1', fromPin: 'frames', toChip: 'table1', toPin: 'data' }
-      ]
-    }
+    id: 'ai-image-gen',
+    name: 'AI Image Generator',
+    description: 'Generate images from text prompts',
+    icon: <ImageIcon className="w-5 h-5" />,
+    chips: [
+      { chipId: 'text-input', position: { x: 100, y: 150 }, params: { value: 'A beautiful sunset over mountains' } },
+      { chipId: 'ai-image-generator', position: { x: 350, y: 150 }, params: { provider: 'openai', size: '1024x1024' } },
+      { chipId: 'image-display', position: { x: 600, y: 150 }, params: {} }
+    ],
+    connections: [
+      { fromChip: 'text-input-0', fromPin: 'value', toChip: 'ai-image-generator-0', toPin: 'prompt' },
+      { fromChip: 'ai-image-generator-0', fromPin: 'url', toChip: 'image-display-0', toPin: 'url' }
+    ]
   },
   {
-    id: 'security-hash',
-    name: 'Hash Generator',
-    description: 'Generate SHA-256 hash of text',
-    category: 'Security',
-    circuit: {
-      chips: [
-        { instanceId: 'text1', chipId: 'text-input', position: { x: 50, y: 80 }, params: { value: 'Secret Message', type: 'string' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'hash1', chipId: 'hash', position: { x: 300, y: 80 }, params: {}, inputValues: {}, outputValues: {} },
-        { instanceId: 'display1', chipId: 'value-display', position: { x: 550, y: 80 }, params: { label: 'SHA-256 Hash' }, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'text1', fromPin: 'value', toChip: 'hash1', toPin: 'data' },
-        { id: 'c2', fromChip: 'hash1', fromPin: 'hash', toChip: 'display1', toPin: 'value' }
-      ]
-    }
+    id: 'ai-code-gen',
+    name: 'AI Code Generator',
+    description: 'Generate code from descriptions',
+    icon: <Code2 className="w-5 h-5" />,
+    chips: [
+      { chipId: 'text-input', position: { x: 100, y: 150 }, params: { value: 'Write a function to calculate fibonacci numbers' } },
+      { chipId: 'ai-code-generator', position: { x: 350, y: 150 }, params: { provider: 'openai', language: 'Python' } },
+      { chipId: 'value-display', position: { x: 600, y: 150 }, params: { label: 'Generated Code' } }
+    ],
+    connections: [
+      { fromChip: 'text-input-0', fromPin: 'value', toChip: 'ai-code-generator-0', toPin: 'description' },
+      { fromChip: 'ai-code-generator-0', fromPin: 'code', toChip: 'value-display-0', toPin: 'value' }
+    ]
   },
   {
-    id: 'pid-control-demo',
-    name: 'PID Control Demo',
-    description: 'Demonstrate PID controller',
-    category: 'Control',
-    circuit: {
-      chips: [
-        { instanceId: 'setpoint', chipId: 'text-input', position: { x: 50, y: 40 }, params: { value: '100', type: 'number' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'process', chipId: 'text-input', position: { x: 50, y: 120 }, params: { value: '85', type: 'number' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'pid1', chipId: 'pid-controller', position: { x: 300, y: 80 }, params: { kp: 1.5, ki: 0.2, kd: 0.05 }, inputValues: {}, outputValues: {} },
-        { instanceId: 'display1', chipId: 'value-display', position: { x: 550, y: 40 }, params: { label: 'Output' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'display2', chipId: 'value-display', position: { x: 550, y: 120 }, params: { label: 'Error' }, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'setpoint', fromPin: 'value', toChip: 'pid1', toPin: 'setpoint' },
-        { id: 'c2', fromChip: 'process', fromPin: 'value', toChip: 'pid1', toPin: 'processValue' },
-        { id: 'c3', fromChip: 'pid1', fromPin: 'output', toChip: 'display1', toPin: 'value' },
-        { id: 'c4', fromChip: 'pid1', fromPin: 'error', toChip: 'display2', toPin: 'value' }
-      ]
-    }
+    id: 'sentiment-analysis',
+    name: 'Sentiment Analysis',
+    description: 'Analyze sentiment of text',
+    icon: <Heart className="w-5 h-5" />,
+    chips: [
+      { chipId: 'text-input', position: { x: 100, y: 150 }, params: { value: 'I love this product!' } },
+      { chipId: 'ai-sentiment', position: { x: 350, y: 150 }, params: { provider: 'openai' } },
+      { chipId: 'value-display', position: { x: 600, y: 100 }, params: { label: 'Sentiment' } },
+      { chipId: 'value-display', position: { x: 600, y: 200 }, params: { label: 'Score' } }
+    ],
+    connections: [
+      { fromChip: 'text-input-0', fromPin: 'value', toChip: 'ai-sentiment-0', toPin: 'text' },
+      { fromChip: 'ai-sentiment-0', fromPin: 'sentiment', toChip: 'value-display-0', toPin: 'value' },
+      { fromChip: 'ai-sentiment-0', fromPin: 'score', toChip: 'value-display-1', toPin: 'value' }
+    ]
   },
   {
-    id: 'data-pipeline',
-    name: 'Data Pipeline',
-    description: 'Transform array data',
-    category: 'Data',
-    circuit: {
-      chips: [
-        { instanceId: 'arr1', chipId: 'number-array-input', position: { x: 50, y: 80 }, params: { values: '5,2,8,1,9,3,7', generate: 'manual' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'ops1', chipId: 'array-operations', position: { x: 300, y: 80 }, params: { operation: 'sort' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'stats1', chipId: 'statistics', position: { x: 550, y: 40 }, params: {}, inputValues: {}, outputValues: {} },
-        { instanceId: 'display1', chipId: 'value-display', position: { x: 550, y: 120 }, params: { label: 'Mean' }, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'arr1', fromPin: 'array', toChip: 'ops1', toPin: 'array' },
-        { id: 'c2', fromChip: 'ops1', fromPin: 'result', toChip: 'stats1', toPin: 'data' },
-        { id: 'c3', fromChip: 'stats1', fromPin: 'mean', toChip: 'display1', toPin: 'value' }
-      ]
-    }
+    id: 'signal-filter',
+    name: 'Signal Filter Pipeline',
+    description: 'Filter and analyze signals',
+    icon: <Filter className="w-5 h-5" />,
+    chips: [
+      { chipId: 'signal-generator', position: { x: 100, y: 150 }, params: { type: 'sine', frequency: 10 } },
+      { chipId: 'fir-filter', position: { x: 350, y: 150 }, params: { type: 'lowpass', cutoff: 0.2 } },
+      { chipId: 'waveform-display', position: { x: 600, y: 100 }, params: {} },
+      { chipId: 'fft', position: { x: 600, y: 250 }, params: {} },
+      { chipId: 'spectrum-display', position: { x: 850, y: 250 }, params: {} }
+    ],
+    connections: [
+      { fromChip: 'signal-generator-0', fromPin: 'signal', toChip: 'fir-filter-0', toPin: 'signal' },
+      { fromChip: 'fir-filter-0', fromPin: 'filtered', toChip: 'waveform-display-0', toPin: 'signal' },
+      { fromChip: 'fir-filter-0', fromPin: 'filtered', toChip: 'fft-0', toPin: 'signal' },
+      { fromChip: 'fft-0', fromPin: 'magnitude', toChip: 'spectrum-display-0', toPin: 'magnitude' }
+    ]
   },
   {
-    id: 'modbus-generator',
-    name: 'Modbus RTU Generator',
-    description: 'Generate Modbus RTU frames',
-    category: 'Industrial',
-    circuit: {
-      chips: [
-        { instanceId: 'modbus1', chipId: 'modbus-rtu', position: { x: 50, y: 80 }, params: { slaveId: 1, function: '03', register: 0, count: 10 }, inputValues: {}, outputValues: {} },
-        { instanceId: 'display1', chipId: 'value-display', position: { x: 300, y: 40 }, params: { label: 'Hex Frame' }, inputValues: {}, outputValues: {} },
-        { instanceId: 'display2', chipId: 'value-display', position: { x: 300, y: 120 }, params: { label: 'CRC' }, inputValues: {}, outputValues: {} }
-      ],
-      connections: [
-        { id: 'c1', fromChip: 'modbus1', fromPin: 'hex', toChip: 'display1', toPin: 'value' },
-        { id: 'c2', fromChip: 'modbus1', fromPin: 'crc', toChip: 'display2', toPin: 'value' }
-      ]
-    }
+    id: 'http-workflow',
+    name: 'HTTP API Workflow',
+    description: 'Fetch and process API data',
+    icon: <Globe className="w-5 h-5" />,
+    chips: [
+      { chipId: 'workflow-trigger', position: { x: 100, y: 150 }, params: { type: 'manual' } },
+      { chipId: 'http-request', position: { x: 350, y: 150 }, params: { url: 'https://api.example.com/data', method: 'GET' } },
+      { chipId: 'json-parser', position: { x: 600, y: 150 }, params: { mode: 'parse' } },
+      { chipId: 'data-table', position: { x: 850, y: 150 }, params: {} }
+    ],
+    connections: [
+      { fromChip: 'workflow-trigger-0', fromPin: 'trigger', toChip: 'http-request-0', toPin: 'headers' },
+      { fromChip: 'http-request-0', fromPin: 'response', toChip: 'json-parser-0', toPin: 'data' },
+      { fromChip: 'json-parser-0', fromPin: 'parsed', toChip: 'data-table-0', toPin: 'data' }
+    ]
+  },
+  {
+    id: 'ai-chain-workflow',
+    name: 'AI Chain Workflow',
+    description: 'Chain multiple AI operations',
+    icon: <GitBranch className="w-5 h-5" />,
+    chips: [
+      { chipId: 'text-input', position: { x: 100, y: 150 }, params: { value: 'Write a story about a robot' } },
+      { chipId: 'ai-text-generator', position: { x: 350, y: 100 }, params: { provider: 'openai' } },
+      { chipId: 'ai-summarizer', position: { x: 600, y: 100 }, params: { provider: 'openai' } },
+      { chipId: 'ai-translator', position: { x: 850, y: 100 }, params: { provider: 'openai', targetLang: 'French' } },
+      { chipId: 'value-display', position: { x: 1100, y: 100 }, params: { label: 'Final Output' } }
+    ],
+    connections: [
+      { fromChip: 'text-input-0', fromPin: 'value', toChip: 'ai-text-generator-0', toPin: 'prompt' },
+      { fromChip: 'ai-text-generator-0', fromPin: 'text', toChip: 'ai-summarizer-0', toPin: 'text' },
+      { fromChip: 'ai-summarizer-0', fromPin: 'summary', toChip: 'ai-translator-0', toPin: 'text' },
+      { fromChip: 'ai-translator-0', fromPin: 'translated', toChip: 'value-display-0', toPin: 'value' }
+    ]
   }
-]
-
-// ============================================================================
-// CATEGORIES
-// ============================================================================
-
-const CATEGORIES: { id: ChipCategory; name: string; icon: React.ReactNode; color: string }[] = [
-  { id: 'input', name: 'Inputs', icon: <Upload className="w-4 h-4" />, color: '#22c55e' },
-  { id: 'output', name: 'Outputs', icon: <Download className="w-4 h-4" />, color: '#f43f5e' },
-  { id: 'visual', name: 'Visualization', icon: <Eye className="w-4 h-4" />, color: '#8b5cf6' },
-  { id: 'signal', name: 'Signal Processing', icon: <Signal className="w-4 h-4" />, color: '#10b981' },
-  { id: 'communication', name: 'Communication', icon: <Cable className="w-4 h-4" />, color: '#3b82f6' },
-  { id: 'logic', name: 'Logic & Control', icon: <Cpu className="w-4 h-4" />, color: '#f59e0b' },
-  { id: 'math', name: 'Mathematics', icon: <Calculator className="w-4 h-4" />, color: '#ec4899' },
-  { id: 'data', name: 'Data Transform', icon: <Code className="w-4 h-4" />, color: '#8b5cf6' },
-  { id: 'security', name: 'Security', icon: <Shield className="w-4 h-4" />, color: '#ef4444' },
-  { id: 'flow', name: 'Data Flow', icon: <Layers className="w-4 h-4" />, color: '#06b6d4' }
 ]
 
 // ============================================================================
@@ -1589,1513 +1578,823 @@ const CATEGORIES: { id: ChipCategory; name: string; icon: React.ReactNode; color
 // ============================================================================
 
 export default function SoftChipStudio() {
-  const [activeTab, setActiveTab] = useState<'home' | 'builder' | 'tutorials'>('home')
+  const [currentPage, setCurrentPage] = useState<'home' | 'builder' | 'tutorials'>('home')
+  const [menuOpen, setMenuOpen] = useState(false)
   const [circuit, setCircuit] = useState<Circuit>({ chips: [], connections: [] })
   const [selectedChip, setSelectedChip] = useState<string | null>(null)
-  const [isExecuting, setIsExecuting] = useState(false)
-  const [executionResults, setExecutionResults] = useState<Record<string, Record<string, unknown>>>({})
-  const [draggedChip, setDraggedChip] = useState<string | null>(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [connectingFrom, setConnectingFrom] = useState<{ chipId: string; pinId: string; isOutput: boolean } | null>(null)
-  
+  const [isRunning, setIsRunning] = useState(false)
+  const [aiProviders, setAiProviders] = useState<AIProviders>(DEFAULT_PROVIDERS)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const chipStates = useRef<Record<string, Record<string, unknown>>>({})
+  const [executionLogs, setExecutionLogs] = useState<string[]>([])
 
+  // Load AI providers on mount
+  useEffect(() => {
+    setAiProviders(loadProviders())
+  }, [])
+
+  // Save providers when changed
+  const updateProvider = (key: keyof AIProviders, updates: Partial<AIProvider>) => {
+    const newProviders = { ...aiProviders, [key]: { ...aiProviders[key], ...updates } }
+    setAiProviders(newProviders)
+    saveProviders(newProviders)
+    toast.success(`${aiProviders[key].name} configuration saved`)
+  }
+
+  const getProvider = useCallback((name: string) => {
+    return aiProviders[name as keyof AIProviders] || null
+  }, [aiProviders])
+
+  const aiContext: AIContext = { providers: aiProviders, getProvider }
+
+  // Get chip definition
   const getChipDef = (chipId: string) => CHIP_LIBRARY.find(c => c.id === chipId)
 
-  // Add chip
-  const addChip = useCallback((chipId: string, position?: { x: number; y: number }) => {
-    const chipDef = getChipDef(chipId)
-    if (!chipDef) return
+  // Place new chip
+  const placeChip = (chipId: string) => {
+    const def = getChipDef(chipId)
+    if (!def) return
 
     const newChip: PlacedChip = {
       instanceId: `${chipId}-${Date.now()}`,
       chipId,
-      position: position || { x: 150 + Math.random() * 300, y: 100 + Math.random() * 200 },
-      params: chipDef.params?.reduce((acc, p) => ({ ...acc, [p.name]: p.default }), {}) || {},
+      position: { x: 200 + Math.random() * 200, y: 150 + Math.random() * 100 },
+      params: def.params?.reduce((acc, p) => ({ ...acc, [p.name]: p.default }), {}) || {},
       inputValues: {},
       outputValues: {}
     }
 
     setCircuit(prev => ({ ...prev, chips: [...prev.chips, newChip] }))
-    toast.success(`Added ${chipDef.name}`)
-  }, [])
+    toast.success(`Added ${def.name}`)
+  }
 
-  // Remove chip
-  const removeChip = useCallback((instanceId: string) => {
+  // Load template
+  const loadTemplate = (templateId: string) => {
+    const template = TEMPLATES.find(t => t.id === templateId)
+    if (!template) return
+
+    const chips: PlacedChip[] = template.chips.map((tChip, idx) => ({
+      instanceId: `${tChip.chipId}-${idx}`,
+      chipId: tChip.chipId,
+      position: tChip.position,
+      params: tChip.params,
+      inputValues: {},
+      outputValues: {}
+    }))
+
+    const connections: Connection[] = template.connections.map((conn, idx) => ({
+      id: `conn-${idx}`,
+      fromChip: conn.fromChip,
+      fromPin: conn.fromPin,
+      toChip: conn.toChip,
+      toPin: conn.toPin
+    }))
+
+    setCircuit({ chips, connections })
+    setCurrentPage('builder')
+    toast.success(`Loaded template: ${template.name}`)
+  }
+
+  // Handle pin click for connection
+  const handlePinClick = (chipId: string, pinId: string, isOutput: boolean) => {
+    if (connectingFrom) {
+      if (connectingFrom.isOutput !== isOutput && connectingFrom.chipId !== chipId) {
+        const newConn: Connection = {
+          id: `conn-${Date.now()}`,
+          fromChip: connectingFrom.isOutput ? connectingFrom.chipId : chipId,
+          fromPin: connectingFrom.isOutput ? connectingFrom.pinId : pinId,
+          toChip: connectingFrom.isOutput ? chipId : connectingFrom.chipId,
+          toPin: connectingFrom.isOutput ? pinId : connectingFrom.pinId
+        }
+        setCircuit(prev => ({ ...prev, connections: [...prev.connections.filter(c => !(c.toChip === newConn.toChip && c.toPin === newConn.toPin)), newConn] }))
+        toast.success('Connection created')
+      }
+      setConnectingFrom(null)
+    } else {
+      setConnectingFrom({ chipId, pinId, isOutput })
+    }
+  }
+
+  // Run circuit
+  const runCircuit = async () => {
+    if (isRunning) return
+    setIsRunning(true)
+    setExecutionLogs(['Starting execution...'])
+
+    const executionStates: Record<string, unknown> = {}
+    const executed = new Set<string>()
+
+    const executeChip = async (chip: PlacedChip): Promise<void> => {
+      if (executed.has(chip.instanceId)) return
+
+      const def = getChipDef(chip.chipId)
+      if (!def) return
+
+      // Execute dependencies first
+      const dependencies = circuit.connections
+        .filter(c => c.toChip === chip.instanceId)
+        .map(c => circuit.chips.find(ch => ch.instanceId === c.fromChip))
+        .filter(Boolean) as PlacedChip[]
+
+      for (const dep of dependencies) {
+        await executeChip(dep)
+      }
+
+      // Gather inputs
+      const inputs: Record<string, unknown> = {}
+      circuit.connections
+        .filter(c => c.toChip === chip.instanceId)
+        .forEach(c => {
+          const fromChip = circuit.chips.find(ch => ch.instanceId === c.fromChip)
+          if (fromChip && fromChip.outputValues[c.fromPin] !== undefined) {
+            inputs[c.toPin] = fromChip.outputValues[c.fromPin]
+          }
+        })
+
+      // Execute
+      setExecutionLogs(prev => [...prev, `Executing: ${def.name}`])
+      try {
+        const result = await def.execute(inputs, chip.params, executionStates[chip.instanceId], aiContext)
+        chip.outputValues = result
+        if (result._state) {
+          executionStates[chip.instanceId] = result._state
+        }
+        setExecutionLogs(prev => [...prev, `✓ ${def.name} completed`])
+      } catch (error) {
+        setExecutionLogs(prev => [...prev, `✗ ${def.name} failed: ${error}`])
+        toast.error(`Error in ${def.name}: ${error}`)
+      }
+
+      executed.add(chip.instanceId)
+    }
+
+    // Execute all chips
+    for (const chip of circuit.chips) {
+      await executeChip(chip)
+    }
+
+    setCircuit(prev => ({ ...prev }))
+    setIsRunning(false)
+    setExecutionLogs(prev => [...prev, 'Execution complete'])
+    toast.success('Circuit executed')
+  }
+
+  // Clear circuit
+  const clearCircuit = () => {
+    setCircuit({ chips: [], connections: [] })
+    setExecutionLogs([])
+    toast.success('Circuit cleared')
+  }
+
+  // Delete chip
+  const deleteChip = (instanceId: string) => {
     setCircuit(prev => ({
       chips: prev.chips.filter(c => c.instanceId !== instanceId),
       connections: prev.connections.filter(c => c.fromChip !== instanceId && c.toChip !== instanceId)
     }))
     setSelectedChip(null)
-    toast.success('Chip removed')
-  }, [])
+    toast.success('Chip deleted')
+  }
 
-  // Start connection
-  const startConnection = useCallback((chipId: string, pinId: string, isOutput: boolean) => {
-    setConnectingFrom({ chipId, pinId, isOutput })
-  }, [])
-
-  // Complete connection
-  const completeConnection = useCallback((toChipId: string, toPinId: string) => {
-    if (!connectingFrom) return
-    
-    let fromChip: string, fromPin: string, toChip: string, toPin: string
-    
-    if (connectingFrom.isOutput) {
-      fromChip = connectingFrom.chipId
-      fromPin = connectingFrom.pinId
-      toChip = toChipId
-      toPin = toPinId
-    } else {
-      fromChip = toChipId
-      fromPin = toPinId
-      toChip = connectingFrom.chipId
-      toPin = connectingFrom.pinId
-    }
-    
-    // Validate connection
-    if (fromChip === toChip) {
-      toast.error('Cannot connect chip to itself')
-      setConnectingFrom(null)
-      return
-    }
-    
-    const exists = circuit.connections.some(c => 
-      c.fromChip === fromChip && c.fromPin === fromPin && c.toChip === toChip && c.toPin === toPin
-    )
-    if (exists) {
-      toast.error('Connection already exists')
-      setConnectingFrom(null)
-      return
-    }
-    
-    const inputConnected = circuit.connections.some(c => c.toChip === toChip && c.toPin === toPin)
-    if (inputConnected) {
-      toast.error('Input already connected')
-      setConnectingFrom(null)
-      return
-    }
-    
-    const newConnection: Connection = {
-      id: `conn-${Date.now()}`,
-      fromChip, fromPin, toChip, toPin
-    }
-    
-    setCircuit(prev => ({ ...prev, connections: [...prev.connections, newConnection] }))
-    toast.success('Connection added')
-    setConnectingFrom(null)
-  }, [connectingFrom, circuit.connections])
-
-  // Remove connection
-  const removeConnection = useCallback((connectionId: string) => {
+  // Update chip parameter
+  const updateChipParam = (instanceId: string, paramName: string, value: unknown) => {
     setCircuit(prev => ({
       ...prev,
-      connections: prev.connections.filter(c => c.id !== connectionId)
+      chips: prev.chips.map(c =>
+        c.instanceId === instanceId
+          ? { ...c, params: { ...c.params, [paramName]: value } }
+          : c
+      )
     }))
-    toast.success('Connection removed')
-  }, [])
+  }
 
-  // Execute circuit
-  const executeCircuit = useCallback(async () => {
-    if (circuit.chips.length === 0) {
-      toast.error('No chips to execute')
-      return
-    }
-    
-    setIsExecuting(true)
-    const results: Record<string, Record<string, unknown>> = {}
-    
-    try {
-      const executed = new Set<string>()
-      const chipOutputs: Record<string, Record<string, unknown>> = {}
-      
-      const executeChip = async (chip: PlacedChip) => {
-        if (executed.has(chip.instanceId)) return chipOutputs[chip.instanceId]
-        
-        const chipDef = getChipDef(chip.chipId)
-        if (!chipDef) return {}
-        
-        const inputs: Record<string, unknown> = {}
-        for (const inputPin of chipDef.inputs) {
-          const connection = circuit.connections.find(c => c.toChip === chip.instanceId && c.toPin === inputPin.id)
-          if (connection) {
-            const sourceChip = circuit.chips.find(c => c.instanceId === connection.fromChip)
-            if (sourceChip && !executed.has(sourceChip.instanceId)) {
-              await executeChip(sourceChip)
-            }
-            inputs[inputPin.id] = chipOutputs[connection.fromChip]?.[connection.fromPin]
-          }
-        }
-        
-        const state = chipStates.current[chip.instanceId] || {}
-        const result = await chipDef.execute(inputs, chip.params, state)
-        
-        if (result._state) {
-          chipStates.current[chip.instanceId] = result._state
-          delete result._state
-        }
-        
-        chipOutputs[chip.instanceId] = result
-        results[chip.instanceId] = result
-        executed.add(chip.instanceId)
-        
-        return result
-      }
-      
-      for (const chip of circuit.chips) {
-        await executeChip(chip)
-      }
-      
-      setExecutionResults(results)
-      toast.success('Circuit executed!')
-    } catch (error) {
-      toast.error(`Execution failed: ${error}`)
-    } finally {
-      setIsExecuting(false)
-    }
-  }, [circuit])
+  // Get category chips
+  const getCategoryChips = (category: ChipCategory) => CHIP_LIBRARY.filter(c => c.category === category)
 
-  // Load template
-  const loadTemplate = useCallback((templateId: string) => {
-    const template = DEMO_TEMPLATES.find(t => t.id === templateId)
-    if (template) {
-      setCircuit(template.circuit)
-      setExecutionResults({})
-      setActiveTab('builder')
-      toast.success(`Loaded: ${template.name}`)
-    }
-  }, [])
+  const categories: { id: ChipCategory; name: string; color: string }[] = [
+    { id: 'ai', name: 'AI & LLM', color: '#06b6d4' },
+    { id: 'workflow', name: 'Workflow', color: '#f97316' },
+    { id: 'connector', name: 'Connectors', color: '#0ea5e9' },
+    { id: 'input', name: 'Input', color: '#22c55e' },
+    { id: 'output', name: 'Output', color: '#f43f5e' },
+    { id: 'visual', name: 'Visual', color: '#8b5cf6' },
+    { id: 'signal', name: 'Signal', color: '#10b981' },
+    { id: 'data', name: 'Data', color: '#8b5cf6' },
+    { id: 'math', name: 'Math', color: '#ec4899' },
+    { id: 'logic', name: 'Logic', color: '#f59e0b' },
+    { id: 'communication', name: 'Protocol', color: '#3b82f6' },
+    { id: 'security', name: 'Security', color: '#ef4444' }
+  ]
 
-  // Clear circuit
-  const clearCircuit = useCallback(() => {
-    setCircuit({ chips: [], connections: [] })
-    setExecutionResults({})
-    chipStates.current = {}
-    setSelectedChip(null)
-    toast.success('Circuit cleared')
-  }, [])
+  // ============== PAGES ==============
 
-  // Export circuit as JSON file
-  const exportCircuit = useCallback(() => {
-    if (circuit.chips.length === 0) {
-      toast.error('No circuit to export')
-      return
-    }
-    
-    const circuitData = {
-      version: '1.0',
-      exportedAt: new Date().toISOString(),
-      circuit: {
-        chips: circuit.chips.map(c => ({
-          instanceId: c.instanceId,
-          chipId: c.chipId,
-          position: c.position,
-          params: c.params
-        })),
-        connections: circuit.connections
-      }
-    }
-    
-    const blob = new Blob([JSON.stringify(circuitData, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `softchip-circuit-${Date.now()}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success('Circuit exported!')
-  }, [circuit])
+  // Landing Page
+  const LandingPage = () => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Header */}
+      <header className="border-b border-slate-700/50 backdrop-blur-sm sticky top-0 z-50 bg-slate-900/80">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+              <CircuitBoard className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-xl font-bold text-white">SoftChip Studio</span>
+          </div>
+          <nav className="hidden md:flex items-center gap-6">
+            <button onClick={() => setCurrentPage('home')} className="text-slate-300 hover:text-white transition">Home</button>
+            <button onClick={() => setCurrentPage('builder')} className="text-slate-300 hover:text-white transition">Builder</button>
+            <button onClick={() => setCurrentPage('tutorials')} className="text-slate-300 hover:text-white transition">Tutorials</button>
+            <Button onClick={() => setCurrentPage('builder')} className="bg-cyan-600 hover:bg-cyan-700">
+              <Play className="w-4 h-4 mr-2" /> Start Building
+            </Button>
+          </nav>
+          <button className="md:hidden text-white" onClick={() => setMenuOpen(!menuOpen)}>
+            <Menu className="w-6 h-6" />
+          </button>
+        </div>
+      </header>
 
-  // Import circuit from JSON file
-  const importCircuit = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string)
-        if (data.circuit && Array.isArray(data.circuit.chips)) {
-          setCircuit({
-            chips: data.circuit.chips.map((c: PlacedChip) => ({
-              ...c,
-              inputValues: {},
-              outputValues: {}
-            })),
-            connections: data.circuit.connections || []
-          })
-          setExecutionResults({})
-          chipStates.current = {}
-          toast.success(`Imported circuit with ${data.circuit.chips.length} chips`)
-        } else {
-          toast.error('Invalid circuit file format')
-        }
-      } catch {
-        toast.error('Failed to parse circuit file')
-      }
-    }
-    reader.readAsText(file)
-    event.target.value = '' // Reset input
-  }, [])
+      {/* Mobile Menu */}
+      {menuOpen && (
+        <div className="md:hidden bg-slate-800 border-b border-slate-700 p-4 space-y-2">
+          <button onClick={() => { setCurrentPage('home'); setMenuOpen(false) }} className="block w-full text-left text-slate-300 hover:text-white p-2">Home</button>
+          <button onClick={() => { setCurrentPage('builder'); setMenuOpen(false) }} className="block w-full text-left text-slate-300 hover:text-white p-2">Builder</button>
+          <button onClick={() => { setCurrentPage('tutorials'); setMenuOpen(false) }} className="block w-full text-left text-slate-300 hover:text-white p-2">Tutorials</button>
+        </div>
+      )}
 
-  // Update chip position
-  const updateChipPosition = useCallback((instanceId: string, position: { x: number; y: number }) => {
-    setCircuit(prev => ({
-      ...prev,
-      chips: prev.chips.map(c => c.instanceId === instanceId ? { ...c, position } : c)
-    }))
-  }, [])
+      {/* Hero */}
+      <section className="max-w-7xl mx-auto px-4 py-20 text-center">
+        <Badge className="mb-6 bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
+          <Sparkles className="w-3 h-3 mr-1" /> AI-Powered Workflow Automation
+        </Badge>
+        <h1 className="text-5xl md:text-7xl font-bold text-white mb-6">
+          Build <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Intelligent</span> Data Pipelines
+        </h1>
+        <p className="text-xl text-slate-400 max-w-3xl mx-auto mb-8">
+          Connect AI models, APIs, and data processing chips visually. Like n8n meets hardware design — but for AI workflows.
+        </p>
+        <div className="flex flex-wrap justify-center gap-4">
+          <Button size="lg" onClick={() => setCurrentPage('builder')} className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700">
+            <Play className="w-5 h-5 mr-2" /> Start Building Free
+          </Button>
+          <Button size="lg" variant="outline" onClick={() => setCurrentPage('tutorials')} className="border-slate-600 text-slate-300">
+            <BookOpen className="w-5 h-5 mr-2" /> View Tutorials
+          </Button>
+        </div>
+      </section>
 
-  // Update chip params
-  const updateChipParams = useCallback((instanceId: string, params: Record<string, unknown>) => {
-    setCircuit(prev => ({
-      ...prev,
-      chips: prev.chips.map(c => c.instanceId === instanceId ? { ...c, params: { ...c.params, ...params } } : c)
-    }))
-  }, [])
+      {/* AI Providers */}
+      <section className="max-w-7xl mx-auto px-4 py-12">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl font-bold text-white mb-4">Supports All Major AI Providers</h2>
+          <p className="text-slate-400">Bring your own API keys and use any AI model</p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-6">
+          {['OpenAI', 'Anthropic Claude', 'ZAI', 'Kimi', 'Qwen', 'Custom APIs'].map((provider) => (
+            <div key={provider} className="px-6 py-3 bg-slate-800/50 rounded-lg border border-slate-700 text-slate-300">
+              {provider}
+            </div>
+          ))}
+        </div>
+      </section>
 
-  // Handle file upload for input chips
-  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>, chipInstanceId: string) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      const data = e.target?.result as string
-      
-      const chip = circuit.chips.find(c => c.instanceId === chipInstanceId)
-      if (!chip) return
-      
-      if (chip.chipId === 'audio-file-input') {
-        updateChipParams(chipInstanceId, { fileData: data, fileName: file.name })
-        toast.success(`Audio loaded: ${file.name}`)
-      } else if (chip.chipId === 'csv-file-input' || chip.chipId === 'json-file-input') {
-        const text = atob(data.split(',')[1])
-        updateChipParams(chipInstanceId, { fileData: text })
-        toast.success(`File loaded: ${file.name}`)
-      }
-    }
-    
-    if (chipInstanceId.startsWith('audio-file-input')) {
-      reader.readAsDataURL(file)
-    } else {
-      reader.readAsText(file)
-    }
-  }, [circuit.chips, updateChipParams])
-
-  // Start microphone capture
-  const startMicrophoneCapture = useCallback(async (chipInstanceId: string) => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const audioContext = new AudioContext()
-      const source = audioContext.createMediaStreamSource(stream)
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      
-      const samples: number[] = []
-      let isRecording = true
-      
-      processor.onaudioprocess = (e) => {
-        if (!isRecording) return
-        const inputData = e.inputBuffer.getChannelData(0)
-        samples.push(...Array.from(inputData))
-        if (samples.length > 44100 * 5) { // Max 5 seconds
-          isRecording = false
-          stream.getTracks().forEach(t => t.stop())
-          source.disconnect()
-          processor.disconnect()
-          updateChipParams(chipInstanceId, { 
-            captured: JSON.stringify({ samples, sampleRate: 44100 }) 
-          })
-          toast.success(`Captured ${(samples.length / 44100).toFixed(1)}s of audio`)
-        }
-      }
-      
-      source.connect(processor)
-      processor.connect(audioContext.destination)
-      
-      toast.info('Recording... Click anywhere to stop after a few seconds')
-      
-      setTimeout(() => {
-        if (isRecording) {
-          isRecording = false
-          stream.getTracks().forEach(t => t.stop())
-          source.disconnect()
-          processor.disconnect()
-          updateChipParams(chipInstanceId, { 
-            captured: JSON.stringify({ samples, sampleRate: 44100 }) 
-          })
-          toast.success(`Captured ${(samples.length / 44100).toFixed(1)}s of audio`)
-        }
-      }, 3000)
-      
-    } catch (error) {
-      toast.error('Could not access microphone')
-    }
-  }, [updateChipParams])
-
-  return (
-    <TooltipProvider>
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
-        {/* Navigation */}
-        <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-700/50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('home')}>
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-                  <CircuitBoard className="w-6 h-6 text-white" />
+      {/* Features */}
+      <section className="max-w-7xl mx-auto px-4 py-16">
+        <h2 className="text-3xl font-bold text-white text-center mb-12">Powerful Features</h2>
+        <div className="grid md:grid-cols-3 gap-8">
+          {[
+            { icon: <Bot className="w-8 h-8" />, title: 'AI Integration', desc: 'Connect GPT, Claude, Kimi, Qwen and more. Chain AI calls, manage context, build intelligent pipelines.' },
+            { icon: <Workflow className="w-8 h-8" />, title: 'Visual Workflows', desc: 'Drag-and-drop interface like n8n. Build complex automation without writing code.' },
+            { icon: <Signal className="w-8 h-8" />, title: 'Signal Processing', desc: 'FFT, filters, audio analysis. Process real audio files and visualize results.' },
+            { icon: <Globe className="w-8 h-8" />, title: 'API Connectors', desc: 'HTTP requests, webhooks, external APIs. Connect to any service with ease.' },
+            { icon: <Database className="w-8 h-8" />, title: 'Data Processing', desc: 'CSV, JSON, transformations. Process and analyze data from any source.' },
+            { icon: <Shield className="w-8 h-8" />, title: 'Secure by Design', desc: 'API keys stored locally. Your data never leaves your browser.' }
+          ].map((f, i) => (
+            <Card key={i} className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <div className="w-12 h-12 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-lg flex items-center justify-center text-cyan-400 mb-4">
+                  {f.icon}
                 </div>
-                <span className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                  SoftChip Studio
-                </span>
-              </div>
-              
-              <div className="hidden md:flex items-center gap-1">
-                {[
-                  { id: 'home', label: 'Home', icon: <Home className="w-4 h-4" /> },
-                  { id: 'builder', label: 'Circuit Builder', icon: <Cpu className="w-4 h-4" /> },
-                  { id: 'tutorials', label: 'Tutorials', icon: <BookOpen className="w-4 h-4" /> }
-                ].map(item => (
-                  <Button
-                    key={item.id}
-                    variant={activeTab === item.id ? 'default' : 'ghost'}
-                    onClick={() => setActiveTab(item.id as typeof activeTab)}
-                    className={`gap-2 ${activeTab === item.id ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Button>
-                ))}
-              </div>
+                <CardTitle className="text-white">{f.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-400">{f.desc}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
 
-              <Button
-                variant="ghost"
-                className="md:hidden text-white hover:bg-slate-700"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                <Menu className="w-6 h-6" />
+      {/* Templates */}
+      <section className="max-w-7xl mx-auto px-4 py-16 bg-slate-800/30">
+        <h2 className="text-3xl font-bold text-white text-center mb-4">Start with Templates</h2>
+        <p className="text-slate-400 text-center mb-12">Pre-built workflows ready to customize</p>
+        <div className="grid md:grid-cols-4 gap-4">
+          {TEMPLATES.slice(0, 8).map(t => (
+            <Card key={t.id} className="bg-slate-800/50 border-slate-700 hover:border-cyan-500/50 cursor-pointer transition" onClick={() => loadTemplate(t.id)}>
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-slate-700 rounded-lg flex items-center justify-center text-cyan-400">
+                    {t.icon}
+                  </div>
+                  <CardTitle className="text-white text-sm">{t.name}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-500 text-xs">{t.description}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="max-w-7xl mx-auto px-4 py-20 text-center">
+        <h2 className="text-4xl font-bold text-white mb-4">Ready to Build?</h2>
+        <p className="text-slate-400 mb-8">Start creating AI-powered workflows in minutes.</p>
+        <Button size="lg" onClick={() => setCurrentPage('builder')} className="bg-gradient-to-r from-cyan-500 to-blue-600">
+          <Rocket className="w-5 h-5 mr-2" /> Launch Builder
+        </Button>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-700/50 py-8">
+        <div className="max-w-7xl mx-auto px-4 text-center text-slate-500">
+          <p>© 2024 SoftChip Studio. Open Source under MIT License.</p>
+          <p className="mt-2">Built with Next.js, TypeScript, and Tailwind CSS</p>
+        </div>
+      </footer>
+    </div>
+  )
+
+  // Tutorials Page
+  const TutorialsPage = () => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <header className="border-b border-slate-700/50 backdrop-blur-sm sticky top-0 z-50 bg-slate-900/80">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCurrentPage('home')}>
+            <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+              <CircuitBoard className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-xl font-bold text-white">SoftChip Studio</span>
+          </div>
+          <Button onClick={() => setCurrentPage('builder')} className="bg-cyan-600 hover:bg-cyan-700">
+            <Play className="w-4 h-4 mr-2" /> Open Builder
+          </Button>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-4 py-12">
+        <h1 className="text-4xl font-bold text-white mb-8">Tutorials</h1>
+
+        <div className="space-y-6">
+          <Accordion type="single" collapsible className="space-y-4">
+            <AccordionItem value="ai-setup" className="bg-slate-800/50 border border-slate-700 rounded-lg px-4">
+              <AccordionTrigger className="text-white hover:text-cyan-400">
+                <div className="flex items-center gap-3">
+                  <Key className="w-5 h-5 text-cyan-400" />
+                  Setting Up AI Providers
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-400 space-y-4">
+                <p>To use AI features, you need to configure at least one AI provider:</p>
+                <ol className="list-decimal list-inside space-y-2">
+                  <li>Click the Settings (gear) icon in the builder</li>
+                  <li>Enter your API key for OpenAI, Anthropic, or other providers</li>
+                  <li>For custom providers, enter the base URL and API key</li>
+                  <li>Click Save - your keys are stored locally in your browser</li>
+                </ol>
+                <p className="text-yellow-400 text-sm">⚠️ API keys are stored in localStorage. Never share your browser data.</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="ai-pipeline" className="bg-slate-800/50 border border-slate-700 rounded-lg px-4">
+              <AccordionTrigger className="text-white hover:text-cyan-400">
+                <div className="flex items-center gap-3">
+                  <Bot className="w-5 h-5 text-cyan-400" />
+                  Building AI Pipelines
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-400 space-y-4">
+                <p>Create powerful AI workflows by connecting chips:</p>
+                <ol className="list-decimal list-inside space-y-2">
+                  <li>Add a <strong>Text Input</strong> chip for your prompt</li>
+                  <li>Add an <strong>AI Chat</strong> chip and connect the text output</li>
+                  <li>Configure the provider and model in chip settings</li>
+                  <li>Add <strong>AI Memory</strong> for conversation context</li>
+                  <li>Click <strong>Run</strong> to execute the pipeline</li>
+                </ol>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="multi-provider" className="bg-slate-800/50 border border-slate-700 rounded-lg px-4">
+              <AccordionTrigger className="text-white hover:text-cyan-400">
+                <div className="flex items-center gap-3">
+                  <GitBranch className="w-5 h-5 text-cyan-400" />
+                  Multi-Provider AI Chains
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-400 space-y-4">
+                <p>Chain different AI models together:</p>
+                <ul className="list-disc list-inside space-y-2">
+                  <li>Use <strong>OpenAI GPT-4</strong> for initial analysis</li>
+                  <li>Pass results to <strong>Claude</strong> for refinement</li>
+                  <li>Use <strong>Qwen</strong> for translation</li>
+                  <li>Generate images with <strong>DALL-E</strong></li>
+                </ul>
+                <p className="text-cyan-400 text-sm">💡 Each AI chip can use a different provider!</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="audio" className="bg-slate-800/50 border border-slate-700 rounded-lg px-4">
+              <AccordionTrigger className="text-white hover:text-cyan-400">
+                <div className="flex items-center gap-3">
+                  <AudioWaveform className="w-5 h-5 text-cyan-400" />
+                  Audio Signal Processing
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-400 space-y-4">
+                <p>Process real audio files:</p>
+                <ol className="list-decimal list-inside space-y-2">
+                  <li>Add <strong>Audio File</strong> chip and upload a WAV/MP3</li>
+                  <li>Connect to <strong>FFT</strong> for frequency analysis</li>
+                  <li>Add <strong>Spectrum Display</strong> to visualize</li>
+                  <li>Use <strong>FIR Filter</strong> to filter frequencies</li>
+                  <li>Play processed audio with <strong>Audio Player</strong></li>
+                </ol>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="http" className="bg-slate-800/50 border border-slate-700 rounded-lg px-4">
+              <AccordionTrigger className="text-white hover:text-cyan-400">
+                <div className="flex items-center gap-3">
+                  <Globe className="w-5 h-5 text-cyan-400" />
+                  HTTP APIs & Webhooks
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-400 space-y-4">
+                <p>Connect to external services:</p>
+                <ul className="list-disc list-inside space-y-2">
+                  <li><strong>HTTP Request</strong> - Make GET/POST requests</li>
+                  <li><strong>Webhook Receiver</strong> - Receive webhook data</li>
+                  <li>Process JSON responses with <strong>JSON Parser</strong></li>
+                  <li>Display results in <strong>Data Table</strong></li>
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="workflow" className="bg-slate-800/50 border border-slate-700 rounded-lg px-4">
+              <AccordionTrigger className="text-white hover:text-cyan-400">
+                <div className="flex items-center gap-3">
+                  <Workflow className="w-5 h-5 text-cyan-400" />
+                  Workflow Automation (like n8n)
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-400 space-y-4">
+                <p>Build automated workflows:</p>
+                <ul className="list-disc list-inside space-y-2">
+                  <li><strong>Workflow Trigger</strong> - Start execution manually or via webhook</li>
+                  <li><strong>Condition</strong> - Branch based on conditions</li>
+                  <li><strong>Loop</strong> - Iterate over arrays</li>
+                  <li><strong>Delay</strong> - Wait before next step</li>
+                  <li><strong>Merge</strong> - Combine multiple branches</li>
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+
+        <div className="mt-12 text-center">
+          <Button size="lg" onClick={() => setCurrentPage('builder')} className="bg-gradient-to-r from-cyan-500 to-blue-600">
+            <Rocket className="w-5 h-5 mr-2" /> Start Building
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // Builder Page
+  const BuilderPage = () => {
+    const selectedChipData = selectedChip ? circuit.chips.find(c => c.instanceId === selectedChip) : null
+    const selectedChipDef = selectedChipData ? getChipDef(selectedChipData.chipId) : null
+
+    return (
+      <div className="h-screen flex flex-col bg-slate-900">
+        {/* Builder Header */}
+        <header className="border-b border-slate-700 bg-slate-800 px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCurrentPage('home')} className="flex items-center gap-2 text-white hover:text-cyan-400 transition">
+              <CircuitBoard className="w-5 h-5" />
+              <span className="font-bold">SoftChip Studio</span>
+            </button>
+            <Separator orientation="vertical" className="h-6 bg-slate-600" />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={runCircuit} disabled={isRunning} className="bg-emerald-600 hover:bg-emerald-700">
+                {isRunning ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Play className="w-4 h-4 mr-1" />}
+                Run
+              </Button>
+              <Button size="sm" onClick={clearCircuit} variant="destructive">
+                <Trash2 className="w-4 h-4 mr-1" /> Clear
               </Button>
             </div>
           </div>
-
-          {mobileMenuOpen && (
-            <div className="md:hidden bg-slate-800 border-t border-slate-700">
-              {[
-                { id: 'home', label: 'Home', icon: <Home className="w-4 h-4" /> },
-                { id: 'builder', label: 'Circuit Builder', icon: <Cpu className="w-4 h-4" /> },
-                { id: 'tutorials', label: 'Tutorials', icon: <BookOpen className="w-4 h-4" /> }
-              ].map(item => (
-                <Button
-                  key={item.id}
-                  variant="ghost"
-                  onClick={() => { setActiveTab(item.id as typeof activeTab); setMobileMenuOpen(false) }}
-                  className="w-full justify-start gap-2 px-4 py-3 text-white hover:bg-slate-700"
-                >
-                  {item.icon}
-                  {item.label}
+          <div className="flex items-center gap-2">
+            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="border-slate-600 text-slate-300">
+                  <Key className="w-4 h-4 mr-1" /> AI Providers
                 </Button>
-              ))}
-            </div>
-          )}
-        </nav>
-
-        <main className="max-w-7xl mx-auto">
-          {/* HIDDEN FILE INPUT */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept=".wav,.mp3,.csv,.json"
-            onChange={(e) => {
-              // This will be set dynamically
-            }}
-          />
-
-          {/* HOME PAGE */}
-          {activeTab === 'home' && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="px-4 py-12 sm:py-16"
-            >
-              {/* Hero */}
-              <div className="text-center mb-12">
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm mb-6"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Real Data Processing with Software Microchips
-                </motion.div>
-                
-                <motion.h1
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className="text-4xl sm:text-5xl font-bold mb-6"
-                >
-                  Build Real Systems with
-                  <span className="block bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mt-2">
-                    Software Microchips
-                  </span>
-                </motion.h1>
-                
-                <motion.p
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                  className="text-xl text-slate-400 max-w-3xl mx-auto mb-8"
-                >
-                  Upload audio files, process signals, test protocols, transform data — all visually. 
-                  No hardware required. Real inputs, real outputs, real results.
-                </motion.p>
-                
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.3 }}
-                  className="flex flex-col sm:flex-row items-center justify-center gap-4"
-                >
-                  <Button
-                    size="lg"
-                    onClick={() => setActiveTab('builder')}
-                    className="bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-700 hover:to-cyan-700 text-white px-8 py-6 text-lg font-semibold shadow-lg shadow-emerald-500/25"
-                  >
-                    <Rocket className="mr-2 w-5 h-5" />
-                    Start Building
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={() => setActiveTab('tutorials')}
-                    className="border-slate-500 text-white hover:bg-slate-700 hover:text-white px-8 py-6 text-lg font-semibold"
-                  >
-                    <BookOpen className="mr-2 w-5 h-5" />
-                    Learn How
-                  </Button>
-                </motion.div>
-              </div>
-
-              {/* What Can You Do */}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="mb-12"
-              >
-                <h2 className="text-3xl font-bold text-center mb-8">What Can You Do?</h2>
-                
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {[
-                    {
-                      icon: <FileAudio className="w-8 h-8" />,
-                      title: 'Process Audio Files',
-                      description: 'Upload WAV/MP3 files, analyze with FFT, apply filters, hear the results in real-time.',
-                      color: 'from-emerald-500 to-teal-500',
-                      action: () => loadTemplate('audio-analyzer')
-                    },
-                    {
-                      icon: <Signal className="w-8 h-8" />,
-                      title: 'Signal Processing',
-                      description: 'Generate test signals, apply FIR filters, visualize waveforms and frequency spectrum.',
-                      color: 'from-blue-500 to-cyan-500',
-                      action: () => loadTemplate('signal-filter-demo')
-                    },
-                    {
-                      icon: <Mic className="w-8 h-8" />,
-                      title: 'Microphone Input',
-                      description: 'Capture real audio from your microphone, process it live with filters and effects.',
-                      color: 'from-purple-500 to-pink-500',
-                      action: () => setActiveTab('builder')
-                    },
-                    {
-                      icon: <FileSpreadsheet className="w-8 h-8" />,
-                      title: 'CSV/JSON Processing',
-                      description: 'Upload data files, transform, analyze statistics, export results.',
-                      color: 'from-orange-500 to-red-500',
-                      action: () => loadTemplate('csv-statistics')
-                    },
-                    {
-                      icon: <Cable className="w-8 h-8" />,
-                      title: 'Protocol Testing',
-                      description: 'Test UART, Modbus protocols without hardware. Generate frames, verify checksums.',
-                      color: 'from-amber-500 to-yellow-500',
-                      action: () => loadTemplate('uart-testing')
-                    },
-                    {
-                      icon: <Shield className="w-8 h-8" />,
-                      title: 'Security Tools',
-                      description: 'Generate SHA-256 hashes, CRC checksums, verify data integrity.',
-                      color: 'from-red-500 to-pink-500',
-                      action: () => loadTemplate('security-hash')
-                    }
-                  ].map((feature, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.5 + i * 0.1 }}
-                    >
-                      <Card 
-                        className="bg-slate-800/50 border-slate-700 hover:border-slate-500 transition-all group cursor-pointer h-full"
-                        onClick={feature.action}
-                      >
-                        <CardHeader>
-                          <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-lg`}>
-                            {feature.icon}
-                          </div>
-                          <CardTitle className="text-lg">{feature.title}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-slate-400 text-sm">{feature.description}</p>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* Templates */}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.6 }}
-                className="mb-12"
-              >
-                <h2 className="text-3xl font-bold text-center mb-8">Ready-to-Use Templates</h2>
-                
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {DEMO_TEMPLATES.map((template, i) => (
-                    <motion.div
-                      key={template.id}
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.7 + i * 0.05 }}
-                    >
-                      <Card 
-                        className="bg-slate-800/50 border-slate-700 hover:border-emerald-500/50 cursor-pointer transition-all group"
-                        onClick={() => loadTemplate(template.id)}
-                      >
-                        <CardHeader className="pb-2">
-                          <Badge variant="outline" className="w-fit text-xs border-emerald-500/50 text-emerald-400">
-                            {template.category}
-                          </Badge>
-                          <CardTitle className="text-sm mt-2">{template.name}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-slate-400 text-xs">{template.description}</p>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* How It Works */}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.8 }}
-                className="mb-12"
-              >
-                <h2 className="text-3xl font-bold text-center mb-8">How It Works</h2>
-                
-                <div className="grid sm:grid-cols-4 gap-6">
-                  {[
-                    { step: 1, title: 'Upload Input', description: 'Audio files, CSV data, or capture from microphone', icon: <Upload className="w-5 h-5" /> },
-                    { step: 2, title: 'Build Circuit', description: 'Drag chips and connect them to create data flow', icon: <Cpu className="w-5 h-5" /> },
-                    { step: 3, title: 'Execute', description: 'Run your circuit and see real-time results', icon: <Play className="w-5 h-5" /> },
-                    { step: 4, title: 'Export', description: 'Download processed data or play audio output', icon: <Download className="w-5 h-5" /> }
-                  ].map((item, i) => (
-                    <div key={i} className="text-center">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center mx-auto mb-3 text-white font-bold shadow-lg">
-                        {item.icon}
-                      </div>
-                      <h3 className="font-semibold mb-1">{item.title}</h3>
-                      <p className="text-slate-400 text-sm">{item.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* Installation & Self-Hosting */}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.9 }}
-                className="mb-12"
-              >
-                <h2 className="text-3xl font-bold text-center mb-8">
-                  <Terminal className="w-8 h-8 inline-block mr-2 text-emerald-400" />
-                  Installation Guide
-                </h2>
-                
-                <Card className="bg-slate-800/50 border-slate-700 max-w-4xl mx-auto">
-                  <CardHeader>
-                    <CardTitle>Self-Host SoftChip Studio</CardTitle>
-                    <CardDescription>Run your own instance locally or deploy to your servers</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {/* Quick Start */}
-                    <div>
-                      <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2">
-                        <Rocket className="w-4 h-4" />
-                        Quick Start (Local)
-                      </h4>
-                      <div className="bg-slate-900 rounded-lg p-4 font-mono text-sm overflow-x-auto">
-                        <div className="text-slate-400"># Clone and run</div>
-                        <div className="text-cyan-400">git clone https://github.com/softchip/studio.git</div>
-                        <div className="text-cyan-400">cd studio</div>
-                        <div className="text-cyan-400">bun install</div>
-                        <div className="text-cyan-400">bun run dev</div>
-                        <div className="text-slate-400 mt-2"># Open http://localhost:3000</div>
-                      </div>
-                    </div>
-
-                    {/* Requirements */}
-                    <div>
-                      <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2">
-                        <Cpu className="w-4 h-4" />
-                        Requirements
-                      </h4>
-                      <div className="grid sm:grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          Node.js 18+ or Bun
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          Modern browser (Chrome, Firefox, Safari)
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          4GB RAM minimum
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          No database required
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Features */}
-                    <div>
-                      <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" />
-                        Included Features
-                      </h4>
-                      <div className="grid sm:grid-cols-3 gap-2 text-sm">
-                        {[
-                          '50+ Processing Chips',
-                          'Audio File Processing',
-                          'Microphone Input',
-                          'FFT & Signal Analysis',
-                          'CSV/JSON Processing',
-                          'Protocol Testing (UART)',
-                          'Hash & CRC Generation',
-                          'Export/Import Circuits',
-                          'No Server Required'
-                        ].map((feature, i) => (
-                          <div key={i} className="flex items-center gap-2 text-slate-300">
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            {feature}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Docker */}
-                    <div>
-                      <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2">
-                        <Box className="w-4 h-4" />
-                        Docker Deployment
-                      </h4>
-                      <div className="bg-slate-900 rounded-lg p-4 font-mono text-sm overflow-x-auto">
-                        <div className="text-cyan-400">docker pull softchip/studio:latest</div>
-                        <div className="text-cyan-400">docker run -p 3000:3000 softchip/studio</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex gap-2">
-                    <Button className="bg-emerald-600 hover:bg-emerald-700 gap-2">
-                      <Download className="w-4 h-4" />
-                      Download Source Code
-                    </Button>
-                    <Button variant="outline" className="border-slate-600 text-slate-300 hover:text-white gap-2">
-                      <Globe className="w-4 h-4" />
-                      View on GitHub
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-
-              {/* CTA */}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 1 }}
-                className="text-center"
-              >
-                <Card className="bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-emerald-500/30 max-w-2xl mx-auto">
-                  <CardContent className="py-8">
-                    <h3 className="text-2xl font-bold mb-3">Ready to Build?</h3>
-                    <p className="text-slate-300 mb-4">
-                      Start processing real data with visual circuits. No hardware required.
-                    </p>
-                    <Button
-                      size="lg"
-                      onClick={() => setActiveTab('builder')}
-                      className="bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-700 hover:to-cyan-700 text-white font-semibold shadow-lg shadow-emerald-500/25"
-                    >
-                      <Rocket className="mr-2 w-5 h-5" />
-                      Launch Circuit Builder
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </motion.div>
-          )}
-
-          {/* BUILDER */}
-          {activeTab === 'builder' && (
-            <div className="h-[calc(100vh-4rem)] flex flex-col">
-              <div className="flex-1 flex overflow-hidden">
-                {/* Chip Library */}
-                <div className="w-56 bg-slate-800/50 border-r border-slate-700 flex flex-col">
-                  <div className="p-3 border-b border-slate-700">
-                    <h3 className="font-semibold text-sm flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-emerald-400" />
-                      Chip Library
-                    </h3>
-                  </div>
-                  <ScrollArea className="flex-1">
-                    <div className="p-1">
-                      {CATEGORIES.map(category => (
-                        <Accordion key={category.id} type="single" collapsible>
-                          <AccordionItem value={category.id} className="border-0">
-                            <AccordionTrigger className="px-2 py-1.5 hover:bg-slate-700/50 rounded text-xs hover:no-underline">
-                              <div className="flex items-center gap-1.5">
-                                <span style={{ color: category.color }}>{category.icon}</span>
-                                <span className="text-slate-300">{category.name}</span>
-                                <Badge variant="secondary" className="ml-auto text-[10px] bg-slate-700 text-slate-400">
-                                  {CHIP_LIBRARY.filter(c => c.category === category.id).length}
-                                </Badge>
-                              </div>
-                            </AccordionTrigger>
-                            <AccordionContent className="pb-1">
-                              {CHIP_LIBRARY.filter(c => c.category === category.id).map(chip => (
-                                <div
-                                  key={chip.id}
-                                  draggable
-                                  onDragStart={() => setDraggedChip(chip.id)}
-                                  onDragEnd={() => setDraggedChip(null)}
-                                  onClick={() => addChip(chip.id)}
-                                  className="flex items-center gap-1.5 p-1.5 m-0.5 rounded bg-slate-700/30 hover:bg-slate-700/60 cursor-pointer transition-all border border-transparent hover:border-slate-600"
-                                >
-                                  <div 
-                                    className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
-                                    style={{ backgroundColor: `${chip.color}20`, color: chip.color }}
-                                  >
-                                    {chip.icon}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-xs font-medium text-slate-200 truncate">{chip.name}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </AccordionContent>
-                          </AccordionItem>
-                        </Accordion>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-
-                {/* Canvas */}
-                <div className="flex-1 flex flex-col">
-                  {/* Toolbar */}
-                  <div className="h-11 bg-slate-800/30 border-b border-slate-700 flex items-center justify-between px-3">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium h-8"
-                        onClick={executeCircuit}
-                        disabled={isExecuting || circuit.chips.length === 0}
-                      >
-                        {isExecuting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                        Run
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300 h-8"
-                        onClick={exportCircuit}
-                        disabled={circuit.chips.length === 0}
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Save
-                      </Button>
-                      <label className="cursor-pointer">
-                        <input
-                          type="file"
-                          accept=".json"
-                          className="hidden"
-                          onChange={importCircuit}
+              </DialogTrigger>
+              <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Configure AI Providers</DialogTitle>
+                  <DialogDescription className="text-slate-400">
+                    Enter your API keys for AI features. Keys are stored locally in your browser.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {Object.entries(aiProviders).map(([key, provider]) => (
+                    <div key={key} className="space-y-2 p-3 bg-slate-700/50 rounded-lg">
+                      <Label className="text-white font-medium">{provider.name}</Label>
+                      <Input
+                        type="password"
+                        placeholder="API Key"
+                        value={provider.apiKey}
+                        onChange={(e) => updateProvider(key as keyof AIProviders, { apiKey: e.target.value })}
+                        className="bg-slate-900 border-slate-600 text-white"
+                      />
+                      {key !== 'anthropic' && (
+                        <Input
+                          type="text"
+                          placeholder="Base URL (optional)"
+                          value={provider.baseUrl || ''}
+                          onChange={(e) => updateProvider(key as keyof AIProviders, { baseUrl: e.target.value })}
+                          className="bg-slate-900 border-slate-600 text-white text-sm"
                         />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5 border-blue-500/50 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 h-8"
-                          asChild
-                        >
-                          <span>
-                            <Upload className="w-3.5 h-3.5" />
-                            Load
-                          </span>
-                        </Button>
-                      </label>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 border-red-500/50 text-red-400 hover:bg-red-500/20 hover:text-red-300 h-8"
-                        onClick={clearCircuit}
-                        disabled={circuit.chips.length === 0}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Clear
-                      </Button>
-                      <Separator orientation="vertical" className="h-5 bg-slate-600" />
-                      <span className="text-xs text-slate-400">
-                        {circuit.chips.length} chips • {circuit.connections.length} connections
-                      </span>
-                      {connectingFrom && (
-                        <Badge variant="outline" className="border-cyan-500 text-cyan-400 text-xs">
-                          Click output pin to connect...
-                        </Badge>
+                      )}
+                      {provider.models && provider.models.length > 0 && (
+                        <p className="text-xs text-slate-500">Models: {provider.models.join(', ')}</p>
                       )}
                     </div>
-                    <div className="flex gap-1">
-                      {DEMO_TEMPLATES.slice(0, 4).map(t => (
-                        <Tooltip key={t.id}>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-xs text-slate-400 hover:text-white h-7 px-2"
-                              onClick={() => loadTemplate(t.id)}
-                            >
-                              {t.name}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>{t.description}</TooltipContent>
-                        </Tooltip>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Canvas Area */}
-                  <div
-                    ref={canvasRef}
-                    className="flex-1 relative overflow-auto bg-slate-900/50"
-                    style={{ 
-                      backgroundImage: 'radial-gradient(circle, #334155 1px, transparent 1px)',
-                      backgroundSize: '20px 20px'
-                    }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      if (draggedChip) {
-                        const rect = canvasRef.current?.getBoundingClientRect()
-                        if (rect) {
-                          addChip(draggedChip, {
-                            x: Math.max(0, e.clientX - rect.left + canvasRef.current!.scrollLeft - 60),
-                            y: Math.max(0, e.clientY - rect.top + canvasRef.current!.scrollTop - 30)
-                          })
-                        }
-                        setDraggedChip(null)
-                      }
-                    }}
-                    onClick={() => { 
-                      setSelectedChip(null)
-                      setConnectingFrom(null)
-                    }}
-                  >
-                    {/* Connections */}
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ minWidth: '2000px', minHeight: '2000px' }}>
-                      {circuit.connections.map(conn => {
-                        const fromChip = circuit.chips.find(c => c.instanceId === conn.fromChip)
-                        const toChip = circuit.chips.find(c => c.instanceId === conn.toChip)
-                        if (!fromChip || !toChip) return null
-                        
-                        const fromDef = getChipDef(fromChip.chipId)
-                        const toDef = getChipDef(toChip.chipId)
-                        if (!fromDef || !toDef) return null
-                        
-                        const fromPinIndex = fromDef.outputs.findIndex(p => p.id === conn.fromPin)
-                        const toPinIndex = toDef.inputs.findIndex(p => p.id === conn.toPin)
-                        
-                        const x1 = fromChip.position.x + 130
-                        const y1 = fromChip.position.y + 36 + fromPinIndex * 20
-                        const x2 = toChip.position.x
-                        const y2 = toChip.position.y + 36 + toPinIndex * 20
-                        
-                        return (
-                          <path
-                            key={conn.id}
-                            d={`M ${x1} ${y1} C ${x1 + 40} ${y1}, ${x2 - 40} ${y2}, ${x2} ${y2}`}
-                            fill="none"
-                            stroke="#22d3ee"
-                            strokeWidth={2}
-                            className="pointer-events-auto cursor-pointer hover:stroke-emerald-400"
-                            onClick={(e) => { e.stopPropagation(); removeConnection(conn.id) }}
-                          />
-                        )
-                      })}
-                    </svg>
-
-                    {/* Chips */}
-                    {circuit.chips.map(chip => {
-                      const chipDef = getChipDef(chip.chipId)
-                      if (!chipDef) return null
-                      
-                      const results = executionResults[chip.instanceId] || {}
-
-                      return (
-                        <motion.div
-                          key={chip.instanceId}
-                          initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          className={`absolute cursor-move ${selectedChip === chip.instanceId ? 'z-10' : ''}`}
-                          style={{ left: chip.position.x, top: chip.position.y }}
-                          onClick={(e) => { e.stopPropagation(); setSelectedChip(chip.instanceId) }}
-                          draggable
-                          onDragEnd={(e) => {
-                            const rect = canvasRef.current?.getBoundingClientRect()
-                            if (rect) {
-                              updateChipPosition(chip.instanceId, {
-                                x: Math.max(0, e.clientX - rect.left + canvasRef.current!.scrollLeft - 60),
-                                y: Math.max(0, e.clientY - rect.top + canvasRef.current!.scrollTop - 30)
-                              })
-                            }
-                          }}
-                        >
-                          <Card className={`w-[130px] bg-slate-800 border-slate-600 shadow-lg ${selectedChip === chip.instanceId ? 'ring-2 ring-emerald-500' : ''}`}>
-                            <div 
-                              className="h-7 rounded-t-lg flex items-center px-2 gap-1 text-xs font-medium"
-                              style={{ backgroundColor: `${chipDef.color}20`, color: chipDef.color }}
-                            >
-                              {chipDef.icon}
-                              <span className="truncate flex-1">{chipDef.name}</span>
-                            </div>
-                            <CardContent className="p-1.5">
-                              {/* Input Pins */}
-                              <div className="space-y-0.5 mb-1">
-                                {chipDef.inputs.map((pin) => {
-                                  const isConnected = circuit.connections.some(c => c.toChip === chip.instanceId && c.toPin === pin.id)
-                                  return (
-                                    <div key={pin.id} className="flex items-center gap-1 text-[10px]">
-                                      <div 
-                                        className={`w-2.5 h-2.5 rounded-full border cursor-pointer ${
-                                          isConnected ? 'bg-emerald-500 border-emerald-400' : 
-                                          connectingFrom && !connectingFrom.isOutput ? 'border-cyan-400 animate-pulse' :
-                                          'border-slate-500 bg-slate-700 hover:border-cyan-400'
-                                        }`}
-                                        title={`${pin.name}: ${pin.type}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          if (connectingFrom && connectingFrom.isOutput) {
-                                            completeConnection(chip.instanceId, pin.id)
-                                          } else {
-                                            startConnection(chip.instanceId, pin.id, false)
-                                          }
-                                        }}
-                                      />
-                                      <span className="text-slate-400 truncate">{pin.name}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                              
-                              {/* Output Pins */}
-                              <div className="space-y-0.5">
-                                {chipDef.outputs.map((pin) => (
-                                  <div key={pin.id} className="flex items-center gap-1 text-[10px] justify-end">
-                                    <span className="text-slate-400 truncate">{pin.name}</span>
-                                    <div 
-                                      className={`w-2.5 h-2.5 rounded-full border cursor-pointer ${
-                                        connectingFrom?.chipId === chip.instanceId && connectingFrom.pinId === pin.id
-                                          ? 'bg-cyan-500 border-cyan-400'
-                                          : 'border-cyan-500 bg-cyan-500/30 hover:bg-cyan-500'
-                                      }`}
-                                      title={`${pin.name}: ${pin.type}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        if (connectingFrom && !connectingFrom.isOutput) {
-                                          completeConnection(chip.instanceId, pin.id)
-                                        } else {
-                                          startConnection(chip.instanceId, pin.id, true)
-                                        }
-                                      }}
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                              
-                              {/* Special UI for input chips */}
-                              {chipDef.id === 'audio-file-input' && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <input
-                                    type="file"
-                                    accept=".wav,.mp3,.ogg"
-                                    className="hidden"
-                                    id={`file-${chip.instanceId}`}
-                                    onChange={(e) => handleFileUpload(e, chip.instanceId)}
-                                  />
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    className="w-full h-6 text-[10px] border-slate-600 text-slate-300 hover:bg-slate-700"
-                                    onClick={() => document.getElementById(`file-${chip.instanceId}`)?.click()}
-                                  >
-                                    <Upload className="w-3 h-3 mr-1" />
-                                    Upload Audio
-                                  </Button>
-                                  {chip.params.fileName && (
-                                    <div className="text-[9px] text-emerald-400 mt-1 truncate">
-                                      ✓ {chip.params.fileName as string}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {chipDef.id === 'microphone-input' && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    className="w-full h-6 text-[10px] border-slate-600 text-slate-300 hover:bg-slate-700"
-                                    onClick={() => startMicrophoneCapture(chip.instanceId)}
-                                  >
-                                    <Mic className="w-3 h-3 mr-1" />
-                                    Record
-                                  </Button>
-                                </div>
-                              )}
-                              
-                              {chipDef.id === 'csv-file-input' && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <input
-                                    type="file"
-                                    accept=".csv"
-                                    className="hidden"
-                                    id={`csv-${chip.instanceId}`}
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0]
-                                      if (file) {
-                                        const reader = new FileReader()
-                                        reader.onload = (ev) => {
-                                          updateChipParams(chip.instanceId, { fileData: ev.target?.result as string })
-                                          toast.success(`Loaded: ${file.name}`)
-                                        }
-                                        reader.readAsText(file)
-                                      }
-                                    }}
-                                  />
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    className="w-full h-6 text-[10px] border-slate-600 text-slate-300 hover:bg-slate-700"
-                                    onClick={() => document.getElementById(`csv-${chip.instanceId}`)?.click()}
-                                  >
-                                    <Upload className="w-3 h-3 mr-1" />
-                                    Upload CSV
-                                  </Button>
-                                </div>
-                              )}
-                              
-                              {chipDef.id === 'json-file-input' && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <input
-                                    type="file"
-                                    accept=".json"
-                                    className="hidden"
-                                    id={`json-${chip.instanceId}`}
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0]
-                                      if (file) {
-                                        const reader = new FileReader()
-                                        reader.onload = (ev) => {
-                                          updateChipParams(chip.instanceId, { fileData: ev.target?.result as string })
-                                          toast.success(`Loaded: ${file.name}`)
-                                        }
-                                        reader.readAsText(file)
-                                      }
-                                    }}
-                                  />
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    className="w-full h-6 text-[10px] border-slate-600 text-slate-300 hover:bg-slate-700"
-                                    onClick={() => document.getElementById(`json-${chip.instanceId}`)?.click()}
-                                  >
-                                    <Upload className="w-3 h-3 mr-1" />
-                                    Upload JSON
-                                  </Button>
-                                </div>
-                              )}
-                              
-                              {/* Visualization */}
-                              {chipDef.id === 'waveform-display' && results._waveformData && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <div className="h-10 bg-slate-900/50 rounded overflow-hidden">
-                                    <svg viewBox="0 0 100 30" className="w-full h-full">
-                                      <path
-                                        d={`M 0 15 ${((results._waveformData as number[]) || []).slice(0, 100).map((v, i) => 
-                                          `L ${i} ${15 - v * 12}`
-                                        ).join(' ')}`}
-                                        fill="none"
-                                        stroke="#10b981"
-                                        strokeWidth="0.5"
-                                      />
-                                    </svg>
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {chipDef.id === 'spectrum-display' && results._spectrumData && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <div className="h-10 bg-slate-900/50 rounded overflow-hidden flex items-end">
-                                    {(((results._spectrumData as { magnitude: number[] }).magnitude) || []).slice(0, 50).map((v, i) => (
-                                      <div
-                                        key={i}
-                                        className="w-0.5 bg-gradient-to-t from-emerald-500 to-cyan-500"
-                                        style={{ height: `${Math.min(100, v * 1000)}%` }}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {chipDef.id === 'data-table' && results._tableData && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <div className="text-[9px] text-slate-400 max-h-16 overflow-auto">
-                                    {Array.isArray(results._tableData) && results._tableData.slice(0, 3).map((row, i) => (
-                                      <div key={i} className="truncate">
-                                        {JSON.stringify(row).slice(0, 40)}...
-                                      </div>
-                                    ))}
-                                    {Array.isArray(results._tableData) && results._tableData.length > 3 && (
-                                      <div className="text-slate-500">+{results._tableData.length - 3} more rows</div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {chipDef.id === 'value-display' && results._displayValue !== undefined && (
-                                <div className="mt-1.5 pt-1.5 border-t border-slate-600">
-                                  <div className="text-[9px] font-medium text-emerald-400 mb-0.5">
-                                    {results._displayLabel as string}:
-                                  </div>
-                                  <div className="text-[9px] text-slate-300 max-h-12 overflow-auto break-all">
-                                    {typeof results._displayValue === 'object' 
-                                      ? JSON.stringify(results._displayValue, null, 0).slice(0, 80)
-                                      : String(results._displayValue).slice(0, 80)}
-                                  </div>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </motion.div>
-                      )
-                    })}
-
-                    {/* Empty State */}
-                    {circuit.chips.length === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center p-8">
-                        <div className="text-center max-w-md">
-                          <motion.div
-                            animate={{ y: [0, -10, 0] }}
-                            transition={{ repeat: Infinity, duration: 2 }}
-                          >
-                            <Cpu className="w-16 h-16 mx-auto mb-4 text-slate-500" />
-                          </motion.div>
-                          <h3 className="text-xl font-medium mb-2 text-slate-300">Start Building</h3>
-                          <p className="text-slate-400 mb-4 text-sm">
-                            Drag chips from the library or load a template below
-                          </p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {DEMO_TEMPLATES.slice(0, 4).map(t => (
-                              <Button 
-                                key={t.id} 
-                                variant="outline" 
-                                size="sm" 
-                                className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 text-xs justify-start"
-                                onClick={() => loadTemplate(t.id)}
-                              >
-                                <Plus className="w-3 h-3 mr-1" />
-                                {t.name}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
+                <DialogFooter>
+                  <Button onClick={() => setSettingsOpen(false)} className="bg-cyan-600">Done</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Button size="sm" variant="outline" onClick={() => setCurrentPage('tutorials')} className="border-slate-600 text-slate-300">
+              <BookOpen className="w-4 h-4" />
+            </Button>
+          </div>
+        </header>
 
-                {/* Properties Panel */}
-                <div className="w-64 bg-slate-800/50 border-l border-slate-700 flex flex-col">
-                  <div className="p-3 border-b border-slate-700">
-                    <h3 className="font-semibold text-sm flex items-center gap-2">
-                      <Settings className="w-4 h-4 text-emerald-400" />
-                      Properties
-                    </h3>
-                  </div>
-                  <ScrollArea className="flex-1">
-                    <div className="p-3">
-                      {selectedChip ? (
-                        (() => {
-                          const chip = circuit.chips.find(c => c.instanceId === selectedChip)
-                          const chipDef = chip ? getChipDef(chip.chipId) : null
-                          if (!chip || !chipDef) return null
-                          
-                          const results = executionResults[chip.instanceId] || {}
-
-                          return (
-                            <div className="space-y-3">
-                              <div>
-                                <Label className="text-xs text-slate-400">Chip</Label>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <div 
-                                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                                    style={{ backgroundColor: `${chipDef.color}20`, color: chipDef.color }}
-                                  >
-                                    {chipDef.icon}
-                                  </div>
-                                  <div>
-                                    <div className="font-medium text-sm text-slate-200">{chipDef.name}</div>
-                                    <div className="text-xs text-slate-400">{chipDef.description}</div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {chipDef.params && chipDef.params.length > 0 && (
-                                <div>
-                                  <Label className="text-xs text-slate-400">Parameters</Label>
-                                  <div className="space-y-2 mt-2">
-                                    {chipDef.params.map(param => (
-                                      <div key={param.name}>
-                                        <Label className="text-xs text-slate-300">{param.name}</Label>
-                                        {param.type === 'boolean' ? (
-                                          <select
-                                            value={String(chip.params[param.name] ?? param.default)}
-                                            onChange={(e) => updateChipParams(chip.instanceId, { [param.name]: e.target.value === 'true' })}
-                                            className="w-full h-7 mt-1 text-xs bg-slate-700 border-slate-600 text-slate-200 rounded"
-                                          >
-                                            <option value="true">true</option>
-                                            <option value="false">false</option>
-                                          </select>
-                                        ) : (
-                                          <Input
-                                            value={String(chip.params[param.name] ?? param.default)}
-                                            onChange={(e) => updateChipParams(chip.instanceId, { [param.name]: e.target.value })}
-                                            className="h-7 mt-1 text-xs bg-slate-700 border-slate-600 text-slate-200"
-                                          />
-                                        )}
-                                        <p className="text-[10px] text-slate-500 mt-0.5">{param.description}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {Object.keys(results).length > 0 && (
-                                <div>
-                                  <Label className="text-xs text-slate-400">Output</Label>
-                                  <div className="mt-2 p-2 bg-slate-900/50 rounded border border-slate-600 max-h-40 overflow-auto">
-                                    <pre className="text-[10px] text-emerald-400 whitespace-pre-wrap break-all">
-                                      {JSON.stringify(results, (key, value) => 
-                                        key.startsWith('_') ? undefined : value, 2
-                                      )}
-                                    </pre>
-                                  </div>
-                                </div>
-                              )}
-
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="w-full bg-red-600 hover:bg-red-700 h-8 text-xs"
-                                onClick={() => removeChip(chip.instanceId)}
-                              >
-                                <Trash2 className="w-3 h-3 mr-1" />
-                                Remove Chip
-                              </Button>
-                            </div>
-                          )
-                        })()
-                      ) : (
-                        <div className="text-center py-8">
-                          <Info className="w-8 h-8 mx-auto mb-2 text-slate-500" />
-                          <p className="text-sm text-slate-400">Select a chip to view properties</p>
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TUTORIALS */}
-          {activeTab === 'tutorials' && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="px-4 py-12"
-            >
-              <div className="text-center mb-12">
-                <h1 className="text-4xl font-bold mb-4">
-                  Learn <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">SoftChip Studio</span>
-                </h1>
-                <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-                  Master real-world data processing without writing code
-                </p>
-              </div>
-
-              {/* Quick Start */}
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-                {[
-                  { title: 'Upload Audio', desc: 'Process real audio files', icon: <FileAudio className="w-5 h-5" />, action: () => loadTemplate('audio-analyzer') },
-                  { title: 'Capture Mic', desc: 'Record from microphone', icon: <Mic className="w-5 h-5" />, action: () => { setActiveTab('builder'); addChip('microphone-input') } },
-                  { title: 'Process CSV', desc: 'Transform data files', icon: <FileSpreadsheet className="w-5 h-5" />, action: () => loadTemplate('csv-statistics') },
-                  { title: 'Test Protocol', desc: 'UART/Modbus testing', icon: <Cable className="w-5 h-5" />, action: () => loadTemplate('uart-testing') }
-                ].map((item, i) => (
-                  <Card 
-                    key={i}
-                    className="bg-slate-800/50 border-slate-700 hover:border-emerald-500/50 cursor-pointer transition-all"
-                    onClick={item.action}
+        {/* Main Builder Area */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Toolbox Sidebar */}
+          <aside className="w-64 border-r border-slate-700 bg-slate-800 overflow-y-auto">
+            <div className="p-3">
+              <h3 className="text-xs font-semibold text-slate-500 uppercase mb-2">Templates</h3>
+              <div className="space-y-1 mb-4">
+                {TEMPLATES.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => loadTemplate(t.id)}
+                    className="w-full text-left px-2 py-1.5 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2"
                   >
-                    <CardContent className="pt-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                          {item.icon}
-                        </div>
-                        <div>
-                          <div className="font-medium text-sm">{item.title}</div>
-                          <div className="text-xs text-slate-400">{item.desc}</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    <span className="text-cyan-400">{t.icon}</span>
+                    <span className="truncate">{t.name}</span>
+                  </button>
                 ))}
               </div>
 
-              {/* Tutorials */}
-              <div className="space-y-6">
-                <Card className="bg-slate-800/50 border-slate-700">
-                  <CardHeader>
-                    <CardTitle className="text-lg">📚 Tutorial 1: Audio Processing</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-slate-400 text-sm">
-                      Learn how to upload an audio file, compute its frequency spectrum using FFT, and visualize the results.
-                    </p>
-                    <ol className="text-sm text-slate-300 space-y-2 list-decimal list-inside">
-                      <li>Load the "Audio Analyzer" template</li>
-                      <li>Click on the "Audio File" chip and upload a WAV or MP3 file</li>
-                      <li>Click "Run" to execute the circuit</li>
-                      <li>View the spectrum visualization showing frequency content</li>
-                    </ol>
-                    <Button onClick={() => loadTemplate('audio-analyzer')} className="bg-emerald-600 hover:bg-emerald-700">
-                      Try It Now
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-slate-800/50 border-slate-700">
-                  <CardHeader>
-                    <CardTitle className="text-lg">📚 Tutorial 2: Signal Filtering</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-slate-400 text-sm">
-                      Generate test signals, apply low-pass/high-pass filters, and listen to the filtered output.
-                    </p>
-                    <ol className="text-sm text-slate-300 space-y-2 list-decimal list-inside">
-                      <li>Load the "Signal Filter Demo" template</li>
-                      <li>Adjust the Signal Generator parameters (frequency, type)</li>
-                      <li>Modify the FIR Filter cutoff frequency</li>
-                      <li>Run and see the waveform change, hear the filtered audio</li>
-                    </ol>
-                    <Button onClick={() => loadTemplate('signal-filter-demo')} className="bg-emerald-600 hover:bg-emerald-700">
-                      Try It Now
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-slate-800/50 border-slate-700">
-                  <CardHeader>
-                    <CardTitle className="text-lg">📚 Tutorial 3: Protocol Testing</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-slate-400 text-sm">
-                      Test UART and Modbus protocols without any hardware. Generate frames, verify checksums.
-                    </p>
-                    <ol className="text-sm text-slate-300 space-y-2 list-decimal list-inside">
-                      <li>Load the "UART Protocol Testing" template</li>
-                      <li>Change the text input to test different data</li>
-                      <li>Run to see the hex output and frame details</li>
-                      <li>Try the Modbus template for industrial protocol testing</li>
-                    </ol>
-                    <Button onClick={() => loadTemplate('uart-testing')} className="bg-emerald-600 hover:bg-emerald-700">
-                      Try It Now
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-slate-800/50 border-slate-700">
-                  <CardHeader>
-                    <CardTitle className="text-lg">📚 Tutorial 4: Building Custom Circuits</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-slate-400 text-sm">
-                      Learn how to connect chips together to build your own processing pipeline.
-                    </p>
-                    <ol className="text-sm text-slate-300 space-y-2 list-decimal list-inside">
-                      <li>Click on a chip in the library to add it to the canvas</li>
-                      <li>Click on an OUTPUT pin (cyan) to start a connection</li>
-                      <li>Click on an INPUT pin (green) of another chip to connect</li>
-                      <li>Configure chip parameters in the Properties panel</li>
-                      <li>Click "Run" to execute your circuit</li>
-                    </ol>
-                    <Button onClick={() => setActiveTab('builder')} className="bg-emerald-600 hover:bg-emerald-700">
-                      Start Building
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </motion.div>
-          )}
-        </main>
-
-        {/* Footer */}
-        <footer className="bg-slate-900 border-t border-slate-800 mt-auto">
-          <div className="max-w-7xl mx-auto px-4 py-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-                  <CircuitBoard className="w-5 h-5 text-white" />
+              <h3 className="text-xs font-semibold text-slate-500 uppercase mb-2">Chips</h3>
+              {categories.map(cat => (
+                <div key={cat.id} className="mb-3">
+                  <h4 className="text-xs font-medium text-slate-400 mb-1 px-1">{cat.name}</h4>
+                  <div className="space-y-0.5">
+                    {getCategoryChips(cat.id).map(chip => (
+                      <button
+                        key={chip.id}
+                        onClick={() => placeChip(chip.id)}
+                        className="w-full text-left px-2 py-1.5 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2"
+                      >
+                        <span style={{ color: chip.color }}>{chip.icon}</span>
+                        <span className="truncate">{chip.name}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <span className="font-semibold text-slate-300">SoftChip Studio</span>
-              </div>
-              <div className="text-sm text-slate-500">
-                Real data processing with software microchips
-              </div>
+              ))}
             </div>
-          </div>
-        </footer>
+          </aside>
+
+          {/* Canvas */}
+          <main className="flex-1 relative overflow-auto bg-slate-900" ref={canvasRef}>
+            <div className="absolute inset-0" style={{ background: 'radial-gradient(circle, rgba(100,100,100,0.1) 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+              {circuit.chips.map(chip => {
+                const def = getChipDef(chip.chipId)
+                if (!def) return null
+
+                const isSelected = selectedChip === chip.instanceId
+
+                return (
+                  <motion.div
+                    key={chip.instanceId}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className={`absolute cursor-pointer ${isSelected ? 'z-20' : 'z-10'}`}
+                    style={{ left: chip.position.x, top: chip.position.y }}
+                    onClick={() => setSelectedChip(chip.instanceId)}
+                  >
+                    <div
+                      className={`rounded-lg border-2 p-2 min-w-[140px] ${isSelected ? 'border-cyan-500 shadow-lg shadow-cyan-500/20' : 'border-slate-600'}`}
+                      style={{ backgroundColor: chip.color + '20' }}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 rounded flex items-center justify-center" style={{ backgroundColor: chip.color }}>
+                          {def.icon}
+                        </div>
+                        <span className="text-xs font-medium text-white">{def.name}</span>
+                      </div>
+
+                      {/* Pins */}
+                      <div className="relative">
+                        {/* Input Pins */}
+                        <div className="flex flex-col gap-1 absolute -left-2 top-0">
+                          {def.inputs.map(pin => (
+                            <button
+                              key={pin.id}
+                              onClick={(e) => { e.stopPropagation(); handlePinClick(chip.instanceId, pin.id, false) }}
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center text-[8px] ${connectingFrom && !connectingFrom.isOutput && connectingFrom.pinId === pin.id ? 'bg-cyan-500 border-cyan-400' : 'bg-slate-700 border-slate-500 hover:border-cyan-400'}`}
+                              title={pin.description}
+                            >
+                              {connectingFrom?.pinId === pin.id && <div className="w-2 h-2 bg-white rounded-full" />}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Output Pins */}
+                        <div className="flex flex-col gap-1 absolute -right-2 top-0">
+                          {def.outputs.map(pin => (
+                            <button
+                              key={pin.id}
+                              onClick={(e) => { e.stopPropagation(); handlePinClick(chip.instanceId, pin.id, true) }}
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center text-[8px] ${connectingFrom && connectingFrom.isOutput && connectingFrom.pinId === pin.id ? 'bg-cyan-500 border-cyan-400' : 'bg-slate-700 border-slate-500 hover:border-cyan-400'}`}
+                              title={pin.description}
+                            >
+                              {connectingFrom?.pinId === pin.id && <div className="w-2 h-2 bg-white rounded-full" />}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Output Values Preview */}
+                        {Object.keys(chip.outputValues).length > 0 && (
+                          <div className="mt-2 text-[10px] text-slate-400">
+                            {def.outputs.slice(0, 2).map(pin => (
+                              <div key={pin.id} className="truncate">
+                                {pin.name}: {typeof chip.outputValues[pin.id] === 'string'
+                                  ? (chip.outputValues[pin.id] as string).slice(0, 20) + '...'
+                                  : JSON.stringify(chip.outputValues[pin.id]).slice(0, 20)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+
+              {/* Connection Lines */}
+              <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
+                {circuit.connections.map(conn => {
+                  const fromChip = circuit.chips.find(c => c.instanceId === conn.fromChip)
+                  const toChip = circuit.chips.find(c => c.instanceId === conn.toChip)
+                  if (!fromChip || !toChip) return null
+
+                  const fromDef = getChipDef(fromChip.chipId)
+                  const toDef = getChipDef(toChip.chipId)
+                  if (!fromDef || !toDef) return null
+
+                  const fromPinIdx = fromDef.outputs.findIndex(p => p.id === conn.fromPin)
+                  const toPinIdx = toDef.inputs.findIndex(p => p.id === conn.toPin)
+
+                  const x1 = fromChip.position.x + 140
+                  const y1 = fromChip.position.y + 45 + fromPinIdx * 16
+                  const x2 = toChip.position.x
+                  const y2 = toChip.position.y + 45 + toPinIdx * 16
+
+                  const midX = (x1 + x2) / 2
+
+                  return (
+                    <path
+                      key={conn.id}
+                      d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+                      fill="none"
+                      stroke="#06b6d4"
+                      strokeWidth="2"
+                      className="opacity-70"
+                    />
+                  )
+                })}
+              </svg>
+
+              {connectingFrom && (
+                <div className="absolute bottom-4 left-4 bg-cyan-600 text-white px-3 py-2 rounded-lg text-sm">
+                  Click on an {connectingFrom.isOutput ? 'input' : 'output'} pin to connect
+                </div>
+              )}
+            </div>
+          </main>
+
+          {/* Properties Panel */}
+          <aside className="w-72 border-l border-slate-700 bg-slate-800 overflow-y-auto">
+            {selectedChipData && selectedChipDef ? (
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-white font-medium">{selectedChipDef.name}</h3>
+                  <Button size="sm" variant="destructive" onClick={() => deleteChip(selectedChipData.instanceId)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-sm text-slate-400 mb-4">{selectedChipDef.description}</p>
+
+                {selectedChipDef.params && selectedChipDef.params.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase">Parameters</h4>
+                    {selectedChipDef.params.map(param => (
+                      <div key={param.name}>
+                        <Label className="text-slate-400 text-xs">{param.description || param.name}</Label>
+                        {param.type === 'string' && (
+                          <Input
+                            value={String(selectedChipData.params[param.name] || '')}
+                            onChange={(e) => updateChipParam(selectedChipData.instanceId, param.name, e.target.value)}
+                            className="bg-slate-900 border-slate-600 text-white mt-1"
+                          />
+                        )}
+                        {param.type === 'number' && (
+                          <Input
+                            type="number"
+                            value={Number(selectedChipData.params[param.name]) || 0}
+                            onChange={(e) => updateChipParam(selectedChipData.instanceId, param.name, Number(e.target.value))}
+                            className="bg-slate-900 border-slate-600 text-white mt-1"
+                          />
+                        )}
+                        {param.type === 'boolean' && (
+                          <Switch
+                            checked={Boolean(selectedChipData.params[param.name])}
+                            onCheckedChange={(v) => updateChipParam(selectedChipData.instanceId, param.name, v)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Show output values */}
+                {Object.keys(selectedChipData.outputValues).length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">Output Values</h4>
+                    <div className="bg-slate-900 rounded p-2 text-xs text-slate-300 max-h-40 overflow-auto">
+                      <pre>{JSON.stringify(selectedChipData.outputValues, null, 2)}</pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 text-slate-500 text-center">
+                <p>Select a chip to view properties</p>
+              </div>
+            )}
+
+            {/* Execution Logs */}
+            {executionLogs.length > 0 && (
+              <div className="border-t border-slate-700 p-4">
+                <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">Execution Log</h4>
+                <div className="bg-slate-900 rounded p-2 text-xs text-slate-300 max-h-40 overflow-auto">
+                  {executionLogs.map((log, i) => (
+                    <div key={i} className={log.startsWith('✓') ? 'text-green-400' : log.startsWith('✗') ? 'text-red-400' : ''}>
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
+        </div>
       </div>
+    )
+  }
+
+  // Render
+  return (
+    <TooltipProvider>
+      {currentPage === 'home' && <LandingPage />}
+      {currentPage === 'builder' && <BuilderPage />}
+      {currentPage === 'tutorials' && <TutorialsPage />}
     </TooltipProvider>
   )
 }
